@@ -102,7 +102,7 @@ input[type=url]{font:inherit;font-size:14px;min-width:0;min-height:40px;padding:
         <button type="button" id="srcFile" aria-pressed="false">Fichier audio</button>
         <button type="button" id="srcMic" aria-pressed="false">Micro</button>
       </div>
-      <input type="file" id="file" accept="audio/*" hidden>
+      <input type="file" id="file" accept="audio/*,.mp3,.m4a,.aac,.wav,.flac,.ogg,.opus" hidden>
       <form class="link" id="linkForm">
         <label for="url" class="lab">Lien audio direct (fichier mp3, webradio)</label>
         <div class="player">
@@ -451,8 +451,10 @@ function ensureAC(){
   if(!AC){ const C=window.AudioContext||window.webkitAudioContext; AC=new C();
     analyser=AC.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant=0.5;
     gainOut=AC.createGain(); gainOut.gain.value=$('vol').value/100; gainOut.connect(AC.destination); }
-  if(AC.state==='suspended') AC.resume().catch(()=>{});
+  if(AC.state!=='running') AC.resume().catch(()=>{});
 }
+// Sur iPhone, le sélecteur de fichiers ou l'arrêt du micro mettent le moteur audio en pause : on le relance au premier toucher.
+document.addEventListener('pointerdown',()=>{ if(AC && AC.state!=='running') AC.resume().catch(()=>{}); },true);
 function listening(){ return source==='mic' || source==='demo' || (source==='file' && !audio.paused); }
 function analyse(dt,now){
   if(source==='none'){ // aperçu : un souffle simulé pour que la page ne soit jamais vide
@@ -529,7 +531,7 @@ function setSource(s,label){ source=s;
 $('srcDemo').onclick=()=>{ const was=source==='demo'; stopAll(); if(was){ setSource('none'); msg('Démo arrêtée.'); return; }
   try{ demoStart(); setSource('demo','Démo'); msg('Le morceau commence calme, monte en intensité, puis retombe. Un cycle dure environ une minute.'); }
   catch(e){ setSource('none'); msg('Le son n\'a pas pu démarrer sur ce navigateur.',true); } };
-$('srcFile').onclick=()=>$('file').click();
+$('srcFile').onclick=()=>{ try{ ensureAC(); }catch(e){} $('file').click(); };
 function playSrc(src,label,link){ stopAll(); ensureAC();
   if(!elNode){ elNode=AC.createMediaElementSource(audio); elNode.connect(analyser); elNode.connect(gainOut); }
   if(audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
@@ -552,7 +554,8 @@ $('srcMic').onclick=async()=>{ const was=source==='mic'; stopAll(); if(was){ set
     setSource('mic','Micro'); msg('Le bouquet écoute ce qui se passe autour de toi. Rien n\'est enregistré.'); }
   catch(e){ setSource('none'); msg('Le micro n\'est pas accessible dans cette page. Il fonctionnera une fois le projet hébergé sur ton propre site. En attendant, lance la démo ou choisis un fichier audio.',true); } };
 $('play').onclick=()=>{ ensureAC(); if(audio.paused) audio.play().catch(()=>{}); else audio.pause(); };
-audio.onplay=()=>$('play').textContent='Pause'; audio.onpause=()=>$('play').textContent='Lecture';
+audio.onplay=()=>$('play').textContent='Pause';
+audio.onplaying=()=>setTimeout(()=>{ if(source==='file' && !audio.paused && AC && AC.state!=='running') msg('Touche l\'écran une fois pour activer le son et l\'analyse.',true); },1200); audio.onpause=()=>$('play').textContent='Lecture';
 const fmt=s=>{ s=Math.max(0,s|0); return (s/60|0)+':'+String(s%60).padStart(2,'0'); };
 audio.ontimeupdate=()=>{ if(!isFinite(audio.duration)){ $('time').textContent='En direct'; return; } if(!seeking) $('seek').value=audio.currentTime/audio.duration*1000;
   $('time').textContent=fmt(audio.currentTime)+' / '+fmt(audio.duration); };
