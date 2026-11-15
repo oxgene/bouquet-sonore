@@ -62,6 +62,8 @@ input[type=range]{width:100%;accent-color:var(--accent);height:28px;margin:0}
 .player[hidden]{display:none}
 .player .btn{flex:0 0 auto}
 .player input{flex:1}
+.link{display:flex;flex-direction:column;gap:6px}
+input[type=url]{font:inherit;font-size:14px;min-width:0;min-height:40px;padding:8px 11px;border-radius:10px;border:1px solid var(--line);background:transparent;color:var(--ink)}
 .time{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:74px;text-align:right}
 .msg{font-size:13px;color:var(--muted);margin:0;min-height:1.2em}
 .msg.warn{color:var(--ink)}
@@ -101,6 +103,13 @@ input[type=range]{width:100%;accent-color:var(--accent);height:28px;margin:0}
         <button type="button" id="srcMic" aria-pressed="false">Micro</button>
       </div>
       <input type="file" id="file" accept="audio/*" hidden>
+      <form class="link" id="linkForm">
+        <label for="url" class="lab">Lien audio direct (fichier mp3, webradio)</label>
+        <div class="player">
+          <input type="url" id="url" placeholder="https://…/morceau.mp3" inputmode="url" autocomplete="off">
+          <button type="submit" class="btn">Écouter</button>
+        </div>
+      </form>
       <div class="player" id="player" hidden>
         <button type="button" class="btn" id="play">Pause</button>
         <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Position dans le morceau">
@@ -433,7 +442,8 @@ function compose(){
 
 /* ---------- Analyse du son ---------- */
 let AC=null, analyser=null, gainOut=null, source='none', micStream=null, micNode=null, elNode=null;
-const audio=new Audio(); audio.preload='auto';
+const audio=new Audio(); audio.preload='auto'; audio.crossOrigin='anonymous';
+let fromLink=false;
 const freq=new Uint8Array(1024);
 const A={raw:[0,0,0,0],pk:[.25,.25,.25,.25],n:[0,0,0,0],fast:[0,0,0,0],slow:[0,0,0,0],e:0,vit:.55,beat:0,tBeat:-9,avgB:0};
 const RANGES=[[30,160],[160,900],[900,4000],[4000,12000]], WEIGHT=[1,1.15,1.5,2.2];
@@ -520,11 +530,21 @@ $('srcDemo').onclick=()=>{ const was=source==='demo'; stopAll(); if(was){ setSou
   try{ demoStart(); setSource('demo','Démo'); msg('Le morceau commence calme, monte en intensité, puis retombe. Un cycle dure environ une minute.'); }
   catch(e){ setSource('none'); msg('Le son n\'a pas pu démarrer sur ce navigateur.',true); } };
 $('srcFile').onclick=()=>$('file').click();
-$('file').onchange=ev=>{ const f=ev.target.files[0]; if(!f) return; stopAll(); ensureAC();
+function playSrc(src,label,link){ stopAll(); ensureAC();
   if(!elNode){ elNode=AC.createMediaElementSource(audio); elNode.connect(analyser); elNode.connect(gainOut); }
-  if(audio.src) URL.revokeObjectURL(audio.src);
-  audio.src=URL.createObjectURL(f); setSource('file',f.name.replace(/\.[^.]+$/,'')); msg('');
-  audio.play().catch(()=>msg('Appuie sur Lecture pour démarrer le morceau.')); };
+  if(audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
+  fromLink=link; audio.src=src; setSource('file',label); msg(link?'Chargement du lien…':'');
+  $('seek').value=0; $('time').textContent=link?'':'0:00 / 0:00';
+  audio.play().then(()=>{ if(link) msg(''); }).catch(()=>{ if(source==='file' && !audio.error) msg('Appuie sur Lecture pour démarrer le morceau.'); }); }
+$('file').onchange=ev=>{ const f=ev.target.files[0]; if(!f) return; playSrc(URL.createObjectURL(f),f.name.replace(/\.[^.]+$/,''),false); ev.target.value=''; };
+$('linkForm').onsubmit=ev=>{ ev.preventDefault(); const u=$('url').value.trim(); if(!u) return;
+  let host; try{ const p=new URL(u); if(p.protocol!=='https:') throw 0; host=p.hostname; }
+  catch(e){ msg('Colle une adresse complète commençant par https://',true); return; }
+  if(/(^|\.)(youtube\.com|youtu\.be|soundcloud\.com|spotify\.com|deezer\.com)$/.test(host)){
+    msg('Les liens YouTube, SoundCloud, Spotify ou Deezer ne donnent pas accès au son. Il faut un lien qui mène directement à un fichier audio ou à une webradio.',true); return; }
+  playSrc(u,host,true); };
+audio.onerror=()=>{ if(source!=='file') return; const link=fromLink; stopAll(); setSource('none');
+  msg(link?'Ce lien ne peut pas être analysé : soit ce n\'est pas un fichier audio, soit son serveur n\'autorise pas la lecture depuis un autre site.':'Ce fichier ne peut pas être lu par ce navigateur. Essaie un mp3, m4a ou wav.',true); };
 $('srcMic').onclick=async()=>{ const was=source==='mic'; stopAll(); if(was){ setSource('none'); msg('Micro coupé.'); return; }
   try{ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) throw new Error('indisponible');
     const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
@@ -534,7 +554,7 @@ $('srcMic').onclick=async()=>{ const was=source==='mic'; stopAll(); if(was){ set
 $('play').onclick=()=>{ ensureAC(); if(audio.paused) audio.play().catch(()=>{}); else audio.pause(); };
 audio.onplay=()=>$('play').textContent='Pause'; audio.onpause=()=>$('play').textContent='Lecture';
 const fmt=s=>{ s=Math.max(0,s|0); return (s/60|0)+':'+String(s%60).padStart(2,'0'); };
-audio.ontimeupdate=()=>{ if(!isFinite(audio.duration)) return; if(!seeking) $('seek').value=audio.currentTime/audio.duration*1000;
+audio.ontimeupdate=()=>{ if(!isFinite(audio.duration)){ $('time').textContent='En direct'; return; } if(!seeking) $('seek').value=audio.currentTime/audio.duration*1000;
   $('time').textContent=fmt(audio.currentTime)+' / '+fmt(audio.duration); };
 let seeking=false;
 $('seek').oninput=()=>{ seeking=true; }; $('seek').onchange=()=>{ if(isFinite(audio.duration)) audio.currentTime=$('seek').value/1000*audio.duration; seeking=false; };
