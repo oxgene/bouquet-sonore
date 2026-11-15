@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bouquet sonore</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;1,9..144,400&family=Figtree:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Mise en page : la scène en haut, les réglages en colonnes dessous. L'interface suit l'ambiance choisie. */
+:root{
+  --bg:#edf0f7; --surface:#ffffff; --ink:#1c2135; --muted:#5a6180; --line:#d5dae8;
+  --accent:#5a45d2; --accent-ink:#ffffff;
+  --font-display:'Fraunces',Georgia,'Times New Roman',serif;
+  --font-body:'Figtree',system-ui,-apple-system,'Segoe UI',sans-serif;
+  color-scheme:light;
+}
+:root[data-amb="dark"]{
+  --bg:#06070d; --surface:#0f111b; --ink:#eceefa; --muted:#959cba; --line:#252a3e;
+  --accent:#b9a8ff; --accent-ink:#0b0b15;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font-family:var(--font-body);font-size:15px;line-height:1.45;
+  transition:background .5s,color .5s}
+.app{max-width:1080px;margin:0 auto;padding:18px 16px 40px;display:flex;flex-direction:column;gap:16px}
+.head{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 14px}
+h1{font-family:var(--font-display);font-style:italic;font-weight:400;font-size:28px;margin:0;letter-spacing:-.01em}
+.sub{margin:0;color:var(--muted);font-size:14px}
+
+.stage{position:relative;width:100%;aspect-ratio:16/9;max-height:80vh;border-radius:14px;overflow:hidden;
+  background:#dfe4ef;border:1px solid var(--line)}
+@media (max-width:700px){.stage{aspect-ratio:4/5}}
+.stage canvas{display:block;width:100%;height:100%;touch-action:pan-y;cursor:grab}
+.stage:fullscreen{width:100vw;height:100vh;max-height:none;border-radius:0;border:0;aspect-ratio:auto}
+.stage.pseudo{position:fixed;inset:0;z-index:50;max-height:none;height:100%;border-radius:0;border:0;aspect-ratio:auto}
+.stage-top{position:absolute;left:10px;right:10px;top:10px;display:flex;justify-content:space-between;align-items:center;gap:8px;pointer-events:none}
+.state{font-size:12px;font-weight:500;padding:5px 10px;border-radius:999px;background:rgba(10,12,24,.42);color:#fff;
+  backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);max-width:70%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{pointer-events:auto;width:40px;height:40px;border-radius:999px;border:0;background:rgba(10,12,24,.42);color:#fff;
+  display:grid;place-items:center;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.icon-btn svg{width:18px;height:18px}
+.nogl{position:absolute;inset:0;display:grid;place-items:center;padding:24px;text-align:center;color:#1c2135;background:#dfe4ef}
+.nogl[hidden]{display:none}
+
+.panel{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:14px}
+.group{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;display:flex;flex-direction:column;gap:14px;
+  transition:background .5s,border-color .5s}
+.group h2{font-family:var(--font-display);font-weight:400;font-size:19px;margin:0}
+.row{display:flex;flex-direction:column;gap:6px}
+.row label,.lab{font-size:13px;color:var(--muted);display:flex;justify-content:space-between;gap:8px}
+.row output{color:var(--ink);font-variant-numeric:tabular-nums}
+.seg{display:flex;gap:6px;flex-wrap:wrap}
+.seg button,.btn{font:inherit;font-weight:500;font-size:14px;padding:9px 13px;min-height:40px;border-radius:10px;border:1px solid var(--line);
+  background:transparent;color:var(--ink);cursor:pointer;flex:1 1 auto;transition:background .2s,border-color .2s,color .2s}
+.seg button:hover,.btn:hover{border-color:var(--accent)}
+.seg button[aria-pressed="true"]{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+button:focus-visible,input:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+input[type=range]{width:100%;accent-color:var(--accent);height:28px;margin:0}
+.player{display:flex;align-items:center;gap:10px}
+.player[hidden]{display:none}
+.player .btn{flex:0 0 auto}
+.player input{flex:1}
+.time{font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:74px;text-align:right}
+.msg{font-size:13px;color:var(--muted);margin:0;min-height:1.2em}
+.msg.warn{color:var(--ink)}
+.meters{display:flex;flex-direction:column;gap:10px}
+.meter{display:grid;grid-template-columns:1fr;gap:4px}
+.meter .lab b{font-weight:500;color:var(--ink)}
+.bar{height:6px;border-radius:99px;background:var(--line);overflow:hidden}
+.bar i{display:block;height:100%;width:100%;transform-origin:left;transform:scaleX(0);background:var(--accent);border-radius:99px}
+.bar.big{height:10px}
+.note{font-size:13px;color:var(--muted);margin:0}
+</style>
+</head>
+<body>
+<main class="app">
+  <header class="head">
+    <h1>Bouquet sonore</h1>
+    <p class="sub">Des fleurs qui poussent, s'ouvrent et fanent avec la musique.</p>
+  </header>
+
+  <section class="stage" id="stage">
+    <canvas id="gl"></canvas>
+    <div class="stage-top">
+      <span class="state" id="state">Aperçu sans musique</span>
+      <button class="icon-btn" id="fs" type="button" aria-label="Plein écran" title="Plein écran">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      </button>
+    </div>
+    <div class="nogl" id="nogl" hidden>Ce navigateur ne peut pas afficher la scène 3D (WebGL 2 indisponible). Essaie avec une version récente de Chrome, Safari ou Firefox.</div>
+  </section>
+
+  <section class="panel">
+    <div class="group">
+      <h2>Musique</h2>
+      <div class="seg" role="group" aria-label="Source sonore">
+        <button type="button" id="srcDemo" aria-pressed="false">Démo</button>
+        <button type="button" id="srcFile" aria-pressed="false">Fichier audio</button>
+        <button type="button" id="srcMic" aria-pressed="false">Micro</button>
+      </div>
+      <input type="file" id="file" accept="audio/*" hidden>
+      <div class="player" id="player" hidden>
+        <button type="button" class="btn" id="play">Pause</button>
+        <input type="range" id="seek" min="0" max="1000" value="0" aria-label="Position dans le morceau">
+        <span class="time" id="time">0:00 / 0:00</span>
+      </div>
+      <div class="row">
+        <label for="vol">Volume <output id="volO">80 %</output></label>
+        <input type="range" id="vol" min="0" max="100" value="80">
+      </div>
+      <p class="msg" id="msg">Lance la démo, choisis un morceau ou active le micro.</p>
+    </div>
+
+    <div class="group">
+      <h2>Ce que le bouquet entend</h2>
+      <div class="meters">
+        <div class="meter"><span class="lab"><b>Intensité du morceau</b><span>taille de la composition</span></span><div class="bar big"><i id="mV"></i></div></div>
+        <div class="meter"><span class="lab"><b>Fleurs principales</b><span>médiums, mélodie</span></span><div class="bar"><i id="m1"></i></div></div>
+        <div class="meter"><span class="lab"><b>Fleurs de support</b><span>hauts médiums</span></span><div class="bar"><i id="m2"></i></div></div>
+        <div class="meter"><span class="lab"><b>Feuillage de garniture</b><span>aigus</span></span><div class="bar"><i id="m3"></i></div></div>
+        <div class="meter"><span class="lab"><b>Feuillage d'habillage</b><span>basses, pulsation</span></span><div class="bar"><i id="m0"></i></div></div>
+      </div>
+    </div>
+
+    <div class="group">
+      <h2>Composition</h2>
+      <div class="row">
+        <span class="lab">Ambiance</span>
+        <div class="seg" role="group" aria-label="Ambiance">
+          <button type="button" id="ambLight" aria-pressed="true">Naturelle</button>
+          <button type="button" id="ambDark" aria-pressed="false">Verre lumineux</button>
+        </div>
+      </div>
+      <div class="row">
+        <span class="lab">Palette</span>
+        <div class="seg" role="group" aria-label="Palette" id="pals">
+          <button type="button" data-pal="flamme" aria-pressed="true">Flamme</button>
+          <button type="button" data-pal="crepuscule" aria-pressed="false">Crépuscule</button>
+          <button type="button" data-pal="prisme" aria-pressed="false">Prisme</button>
+        </div>
+      </div>
+      <div class="row">
+        <label for="count">Fleurs principales <output id="countO">8</output></label>
+        <input type="range" id="count" min="3" max="14" value="8">
+      </div>
+      <div class="row">
+        <label for="dens">Densité du feuillage <output id="densO">55 %</output></label>
+        <input type="range" id="dens" min="0" max="100" value="55">
+      </div>
+      <div class="row">
+        <label for="sens">Sensibilité à la musique <output id="sensO">100 %</output></label>
+        <input type="range" id="sens" min="40" max="250" value="100">
+      </div>
+      <button type="button" class="btn" id="shuffle">Nouvelle composition</button>
+    </div>
+  </section>
+</main>
+
+<script>
+(() => {
+'use strict';
+const $ = id => document.getElementById(id);
+const cv = $('gl');
+const gl = cv.getContext('webgl2', {antialias:true, alpha:false, powerPreference:'high-performance'});
+if (!gl) { $('nogl').hidden = false; return; }
+
+/* ---------- Réglages ---------- */
+const root = document.documentElement;
+const prefersDark = root.dataset.theme === 'dark' ||
+  (root.dataset.theme !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
+const S = {amb: prefersDark ? 'dark' : 'light', pal:'flamme', count:8, dens:0.55, sens:1, seed:7};
+const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ---------- Petite bibliothèque de matrices (colonnes d'abord) ---------- */
+const M4 = () => { const m = new Float32Array(16); m[0]=m[5]=m[10]=m[15]=1; return m; };
+const TMP = new Float32Array(16), TB = new Float32Array(16);
+function mul(o,a,b){
+  for(let c=0;c<4;c++){ const b0=b[c*4],b1=b[c*4+1],b2=b[c*4+2],b3=b[c*4+3];
+    for(let r=0;r<4;r++) TMP[c*4+r]=a[r]*b0+a[4+r]*b1+a[8+r]*b2+a[12+r]*b3; }
+  o.set(TMP); return o;
+}
+function translate(m,x,y,z){ for(let r=0;r<4;r++) m[12+r]+=m[r]*x+m[4+r]*y+m[8+r]*z; return m; }
+function rotX(m,a){ const c=Math.cos(a),s=Math.sin(a); for(let r=0;r<4;r++){ const p=m[4+r],q=m[8+r]; m[4+r]=p*c+q*s; m[8+r]=q*c-p*s; } return m; }
+function rotY(m,a){ const c=Math.cos(a),s=Math.sin(a); for(let r=0;r<4;r++){ const p=m[r],q=m[8+r]; m[r]=p*c-q*s; m[8+r]=p*s+q*c; } return m; }
+function rotZ(m,a){ const c=Math.cos(a),s=Math.sin(a); for(let r=0;r<4;r++){ const p=m[r],q=m[4+r]; m[r]=p*c+q*s; m[4+r]=q*c-p*s; } return m; }
+function scale(m,s){ for(let i=0;i<12;i++) m[i]*=s; return m; }
+function norm3(v){ const l=Math.hypot(v[0],v[1],v[2])||1; v[0]/=l; v[1]/=l; v[2]/=l; return v; }
+function cross(o,a,b){ const x=a[1]*b[2]-a[2]*b[1], y=a[2]*b[0]-a[0]*b[2], z=a[0]*b[1]-a[1]*b[0]; o[0]=x;o[1]=y;o[2]=z; return o; }
+const BX=[0,0,0], BZ=[0,0,0];
+function basisDir(m,d){ // oriente l'axe Y local vers d
+  const ref = Math.abs(d[2])>0.92 ? [1,0,0] : [0,0,1];
+  norm3(cross(BX,d,ref)); cross(BZ,BX,d);
+  TB.fill(0); TB[0]=BX[0];TB[1]=BX[1];TB[2]=BX[2]; TB[4]=d[0];TB[5]=d[1];TB[6]=d[2]; TB[8]=BZ[0];TB[9]=BZ[1];TB[10]=BZ[2]; TB[15]=1;
+  return mul(m,m,TB);
+}
+function persp(o,f,asp,n,fa){ const t=1/Math.tan(f/2); o.fill(0); o[0]=t/asp; o[5]=t; o[10]=(fa+n)/(n-fa); o[11]=-1; o[14]=2*fa*n/(n-fa); return o; }
+function lookAt(o,e,c){ const z=norm3([e[0]-c[0],e[1]-c[1],e[2]-c[2]]), x=norm3(cross([0,0,0],[0,1,0],z)), y=cross([0,0,0],z,x);
+  o[0]=x[0];o[1]=y[0];o[2]=z[0];o[3]=0; o[4]=x[1];o[5]=y[1];o[6]=z[1];o[7]=0; o[8]=x[2];o[9]=y[2];o[10]=z[2];o[11]=0;
+  o[12]=-(x[0]*e[0]+x[1]*e[1]+x[2]*e[2]); o[13]=-(y[0]*e[0]+y[1]*e[1]+y[2]*e[2]); o[14]=-(z[0]*e[0]+z[1]*e[1]+z[2]*e[2]); o[15]=1; return o; }
+const lerp=(a,b,t)=>a+(b-a)*t, clamp=(x,a,b)=>Math.min(b,Math.max(a,x));
+const sstep=(a,b,x)=>{ const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
+const hex=h=>{ const n=parseInt(h.slice(1),16); return [(n>>16)/255,((n>>8)&255)/255,(n&255)/255]; };
+const mix3=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
+function rng(seed){ let a=seed>>>0; return ()=>{ a|=0; a=a+0x6D2B79F5|0; let t=Math.imul(a^a>>>15,1|a); t=t+Math.imul(t^t>>>7,61|t)^t; return ((t^t>>>14)>>>0)/4294967296; }; }
+
+/* ---------- Shaders ---------- */
+const VS=`#version 300 es
+precision highp float;
+layout(location=0) in vec3 aPos; layout(location=1) in vec3 aNor; layout(location=2) in vec3 aCol; layout(location=3) in vec2 aUV;
+uniform mat4 uPV, uM; uniform float uTime, uShake;
+out vec3 vN; out vec3 vCol; out vec3 vW; out vec2 vUV;
+void main(){
+  vec3 p=aPos;
+  if(uShake>0.0){ float id=aUV.y*37.0; p+=uShake*aUV.x*vec3(sin(uTime*13.0+id),cos(uTime*11.0+id*1.3),sin(uTime*17.0+id*0.7)); }
+  vec4 w=uM*vec4(p,1.0); vW=w.xyz; vN=mat3(uM)*aNor; vCol=aCol; vUV=aUV; gl_Position=uPV*w;
+}`;
+const FS=`#version 300 es
+precision highp float;
+in vec3 vN; in vec3 vCol; in vec3 vW; in vec2 vUV;
+uniform vec3 uTint, uEye; uniform float uMode, uUnlit, uGrow, uGlow, uPulse;
+out vec4 o;
+void main(){
+  if(vUV.x>uGrow) discard;
+  vec3 c=vCol*uTint;
+  if(uUnlit>0.5){ o=vec4(c,1.0); return; }
+  vec3 N=normalize(vN); vec3 V=normalize(uEye-vW); if(dot(N,V)<0.0) N=-N;
+  float ndv=max(dot(N,V),0.0);
+  if(uMode<0.5){
+    vec3 L=normalize(vec3(0.35,0.9,0.55));
+    float d=dot(N,L)*0.5+0.5;
+    vec3 col=c*(0.44+0.70*d*d)+c*vec3(0.86,0.90,1.0)*0.10;
+    col+=pow(1.0-ndv,3.0)*0.10;
+    col*=1.0+uGlow*0.22;
+    o=vec4(col,1.0);
+  } else {
+    float f=pow(1.0-ndv,1.6);
+    float band=exp(-pow((vUV.x-uPulse)*5.0,2.0));
+    o=vec4(c*(0.15+0.75*f+0.55*uGlow+1.7*band),1.0);
+  }
+}`;
+function sh(type,src){ const s=gl.createShader(type); gl.shaderSource(s,src); gl.compileShader(s);
+  if(!gl.getShaderParameter(s,gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s)); return s; }
+const prog=gl.createProgram(); gl.attachShader(prog,sh(gl.VERTEX_SHADER,VS)); gl.attachShader(prog,sh(gl.FRAGMENT_SHADER,FS)); gl.linkProgram(prog);
+if(!gl.getProgramParameter(prog,gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(prog));
+gl.useProgram(prog);
+const U={}; ['uPV','uM','uTime','uShake','uTint','uEye','uMode','uUnlit','uGrow','uGlow','uPulse'].forEach(n=>U[n]=gl.getUniformLocation(prog,n));
+
+/* ---------- Constructeur de géométrie ---------- */
+class Builder{
+  constructor(){ this.p=[]; this.c=[]; this.u=[]; this.i=[]; }
+  grid(nu,nv,fn,M,uvx,id){
+    const o=this.p.length/3;
+    for(let i=0;i<=nu;i++) for(let j=0;j<=nv;j++){
+      const r=fn(i/nu,j/nv); let x=r[0],y=r[1],z=r[2];
+      if(M){ const X=M[0]*x+M[4]*y+M[8]*z+M[12], Y=M[1]*x+M[5]*y+M[9]*z+M[13], Z=M[2]*x+M[6]*y+M[10]*z+M[14]; x=X;y=Y;z=Z; }
+      this.p.push(x,y,z); this.c.push(r[3],r[4],r[5]);
+      this.u.push(uvx==null?r[6]:uvx, id==null?r[7]:id);
+    }
+    for(let i=0;i<nu;i++) for(let j=0;j<nv;j++){ const a=o+i*(nv+1)+j,b=a+1,c=a+nv+1,d=c+1; this.i.push(a,c,b,b,c,d); }
+  }
+  done(){
+    const p=this.p, n=new Float32Array(p.length), I=this.i;
+    for(let k=0;k<I.length;k+=3){ const a=I[k]*3,b=I[k+1]*3,c=I[k+2]*3;
+      const ux=p[b]-p[a],uy=p[b+1]-p[a+1],uz=p[b+2]-p[a+2], vx=p[c]-p[a],vy=p[c+1]-p[a+1],vz=p[c+2]-p[a+2];
+      const nx=uy*vz-uz*vy, ny=uz*vx-ux*vz, nz=ux*vy-uy*vx;
+      for(const q of [a,b,c]){ n[q]+=nx; n[q+1]+=ny; n[q+2]+=nz; } }
+    const N=p.length/3, v=new Float32Array(N*11);
+    for(let k=0;k<N;k++){ const l=Math.hypot(n[k*3],n[k*3+1],n[k*3+2])||1;
+      v.set([p[k*3],p[k*3+1],p[k*3+2], n[k*3]/l,n[k*3+1]/l,n[k*3+2]/l, this.c[k*3],this.c[k*3+1],this.c[k*3+2], this.u[k*2],this.u[k*2+1]],k*11); }
+    const vao=gl.createVertexArray(); gl.bindVertexArray(vao);
+    const vb=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,vb); gl.bufferData(gl.ARRAY_BUFFER,v,gl.STATIC_DRAW);
+    [[0,3,0],[1,3,12],[2,3,24],[3,2,36]].forEach(([l,s,o])=>{ gl.enableVertexAttribArray(l); gl.vertexAttribPointer(l,s,gl.FLOAT,false,44,o); });
+    const eb=gl.createBuffer(); gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER,eb); gl.bufferData(gl.ELEMENT_ARRAY_BUFFER,new Uint16Array(I),gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+    return {vao,vb,eb,n:I.length};
+  }
+}
+function dispose(g){ if(!g) return; gl.deleteVertexArray(g.vao); gl.deleteBuffer(g.vb); gl.deleteBuffer(g.eb); }
+
+/* Un pétale (ou une feuille) : pousse le long de +Y, se creuse, s'enroule, ondule. */
+const SHAPE={
+  glo :{L:.46,W:.075,pw:.8, sh:.7, cup:.5, curl:.20,ruf:.55,rf:16,c0:.22,c1:.8},
+  rose:{L:.22,W:.13, pw:1.25,sh:.55,cup:1.1,curl:-.10,ruf:.08,rf:9, c0:.1, c1:.9},
+  sup :{L:.19,W:.06, pw:1.0,sh:.8, cup:.4, curl:.10,ruf:.10,rf:10,c0:.05,c1:.7},
+  leaf:{L:.75,W:.12, pw:.75,sh:.9, cup:.5, curl:.25,ruf:.05,rf:7, c0:.0, c1:1},
+  mini:{L:.07,W:.028,pw:1.0,sh:.7, cup:.3, curl:.1, ruf:0,  rf:1, c0:.0, c1:1},
+  tiny:{L:.13,W:.03, pw:.8, sh:.9, cup:.4, curl:.2, ruf:0,  rf:1, c0:.0, c1:1}
+};
+function petalFn(s,base,tip){
+  return (a,b)=>{ const u=a, v=b*2-1;
+    const w=s.W*Math.pow(Math.max(0,Math.sin(Math.PI*Math.pow(u,s.pw))),s.sh);
+    const z=-s.cup*v*v*w + s.curl*s.L*u*u + s.ruf*w*Math.abs(v)*Math.sin(u*s.rf);
+    const c=mix3(base,tip,sstep(s.c0,s.c1,u));
+    return [v*w,u*s.L,z,c[0],c[1],c[2],u,0]; };
+}
+function petalGeo(s,base,tip,nu=8,nv=4){ const b=new Builder(); b.grid(nu,nv,petalFn(s,base,tip)); return b.done(); }
+
+function bez(e,t,o){ const m=1-t; for(let k=0;k<3;k++) o[k]=m*m*e.A[k]+2*m*t*e.B[k]+t*t*e.C[k]; return o; }
+function bezT(e,t,o){ const m=1-t; for(let k=0;k<3;k++) o[k]=2*m*(e.B[k]-e.A[k])+2*t*(e.C[k]-e.B[k]); return norm3(o); }
+function tubeFn(e,r0,c0,c1){
+  const P=[0,0,0],T=[0,0,0],N=[0,0,0],Bn=[0,0,0];
+  return (a,b)=>{ bez(e,a,P); bezT(e,a,T);
+    norm3(cross(N,T,Math.abs(T[2])>0.92?[1,0,0]:[0,0,1])); cross(Bn,T,N);
+    const an=b*Math.PI*2, r=r0*(1-0.55*a), cs=Math.cos(an)*r, sn=Math.sin(an)*r, c=mix3(c0,c1,a);
+    return [P[0]+N[0]*cs+Bn[0]*sn, P[1]+N[1]*cs+Bn[1]*sn, P[2]+N[2]*cs+Bn[2]*sn, c[0],c[1],c[2], a,0]; };
+}
+
+/* ---------- Palettes (tirées des trois photos de référence) ---------- */
+const PAL={
+  flamme:{
+    main:[{t:'glo',base:'#f6e04a',tip:'#ee4a1c'},{t:'rose',base:'#f2d548',tip:'#fbf2b4'},{t:'glo',base:'#fbf3b0',tip:'#f08fb0'},{t:'rose',base:'#d9e59a',tip:'#ffffff'}],
+    sup:[{base:'#ffffff',tip:'#a99be8'},{base:'#dfe6ff',tip:'#3e6fe0'},{base:'#fff7c9',tip:'#ffffff'}],
+    twig:'#7c9a4a',dot:'#f2e85c',leaf:['#4f8236','#a4c964'],stem:'#6f9442',vase:['#9fc46a','#e8d868','#8fb7c9'],shape:0},
+  crepuscule:{
+    main:[{t:'rose',base:'#3b1fb0',tip:'#7a4cf0'},{t:'glo',base:'#c9a6f5',tip:'#8a4fd8'},{t:'glo',base:'#ffb23e',tip:'#f0561e'},{t:'rose',base:'#f7e27a',tip:'#fff6c4'}],
+    sup:[{base:'#ffd9a0',tip:'#f2681f'},{base:'#e6dcff',tip:'#7f86ea'},{base:'#f3c3f0',tip:'#b04fd0'}],
+    twig:'#6b7a3a',dot:'#f7e23c',leaf:['#44703f','#86b06a'],stem:'#5d7f3f',vase:['#2f4fa8','#c98a4a','#e9e2d6'],shape:1},
+  prisme:{
+    main:[{t:'rose',base:'#f6a8c8',tip:'#fde3ee'},{t:'glo',base:'#fdeedd',tip:'#f2603c'},{t:'glo',base:'#bcd6ff',tip:'#4f7fe8'},{t:'rose',base:'#fff3dc',tip:'#ffffff'}],
+    sup:[{base:'#ffffff',tip:'#8fb4f5'},{base:'#ffe1d6',tip:'#f58a6a'},{base:'#f0e6ff',tip:'#c9a0f0'}],
+    twig:'#8aa37a',dot:'#ffd0e0',leaf:['#5f8f70',  '#b6d6b0'],stem:'#7da07a',vase:['#e9dfe9','#b9cdf2','#f3c9bf'],shape:0}
+};
+const VASES=[
+  [[0,.20],[.08,.30],[.40,.50],[.70,.40],[.88,.20],[.96,.20],[1,.25]],
+  [[0,.16],[.10,.36],[.45,.62],[.80,.42],[.93,.23],[1,.27]]
+];
+function vaseGeo(P,R){
+  const pts=VASES[P.shape], cols=P.vase.map(hex);
+  const prof=a=>{ for(let k=0;k<pts.length-1;k++){ if(a<=pts[k+1][0]) return lerp(pts[k][1],pts[k+1][1],sstep(pts[k][0],pts[k+1][0],a)); } return pts[pts.length-1][1]; };
+  const lat=[]; for(let k=0;k<12*9;k++) lat.push(R());
+  const low=(a,b)=>{ const x=a*8, y=(b%1)*12, x0=Math.floor(x), y0=Math.floor(y), fx=x-x0, fy=y-y0;
+    const g=(i,j)=>lat[(j%12)*9+Math.min(8,i)]; return lerp(lerp(g(x0,y0),g(x0+1,y0),fx),lerp(g(x0,y0+1),g(x0+1,y0+1),fx),fy); };
+  const b=new Builder();
+  b.grid(30,44,(a,bb)=>{ const r=prof(a), an=bb*Math.PI*2;
+    let c=mix3(cols[0],cols[1],sstep(.3,.7,low(a,bb)));
+    if(bb<0.999 && R()<0.28) c=mix3(c,cols[2],0.75);
+    return [Math.cos(an)*r,-1+a,Math.sin(an)*r,c[0],c[1],c[2],a,0]; });
+  b.grid(1,20,(a,bb)=>{ const an=bb*Math.PI*2, r=a*pts[pts.length-1][1]*0.96; return [Math.cos(an)*r,-0.035,Math.sin(an)*r,.10,.12,.09,0,0]; });
+  return b.done();
+}
+
+/* ---------- Géométries fixes ---------- */
+const G={};
+(function(){
+  let b=new Builder(); b.grid(1,1,(a,c)=>{ const t=a; return [c*2-1,t*2-1,0, lerp(.80,.95,t),lerp(.84,.96,t),lerp(.92,.995,t),0,0]; }); G.backL=b.done();
+  b=new Builder(); b.grid(1,1,(a,c)=>[c*2-1,a*2-1,0, lerp(.055,.012,a),lerp(.04,.018,a),lerp(.10,.045,a),0,0]); G.backD=b.done();
+  b=new Builder(); const h=.64, y0=-1, y1=-4.2, W=[.965,.972,.99];
+  b.grid(1,1,(a,c)=>[lerp(-h,h,a),y0,lerp(-h,h,c),...W,0,0]);
+  [[-h,-h,h,-h],[h,-h,h,h],[h,h,-h,h],[-h,h,-h,-h]].forEach(([x0,z0,x1,z1])=>
+    b.grid(1,1,(a,c)=>[lerp(x0,x1,a),lerp(y0,y1,c),lerp(z0,z1,a),...W,0,0]));
+  G.plinth=b.done();
+  b=new Builder(); b.grid(6,24,(a,c)=>{ const an=c*Math.PI*2, r=a*.62, k=lerp(.66,1,sstep(.25,1,a)); return [Math.cos(an)*r,-0.996,Math.sin(an)*r,k,k,k*1.01,0,0]; }); G.shadow=b.done();
+  b=new Builder(); b.grid(6,20,(a,c)=>{ const an=c*Math.PI*2, k=(1-a)*(1-a); return [Math.cos(an)*a,Math.sin(an)*a,0,k,k,k,0,0]; }); G.halo=b.done();
+  b=new Builder(); b.grid(4,8,(a,c)=>{ const an=c*Math.PI*2, ph=a*Math.PI/2, r=.032; return [Math.sin(ph)*Math.cos(an)*r,Math.cos(ph)*r,Math.sin(ph)*Math.sin(an)*r,.72,.78,.30,0,0]; }); G.center=b.done();
+})();
+
+/* ---------- Composition : quatre couches hiérarchisées ---------- */
+let dyn=[], EL={main:[],sup:[],spray:[],leaf:[]}, VASE=null, GP={};
+const keep=g=>{ dyn.push(g); return g; };
+function compose(){
+  dyn.forEach(dispose); dyn=[];
+  const R=rng(S.seed*7919+S.count*31+Math.round(S.dens*100)), P=PAL[S.pal];
+  const stemC=hex(P.stem), stemD=mix3(stemC,[0,0,0],.3);
+  VASE=keep(vaseGeo(P,R));
+  GP.main=P.main.map(m=>keep(petalGeo(SHAPE[m.t],hex(m.base),hex(m.tip))));
+  GP.sup=P.sup.map(m=>keep(petalGeo(SHAPE.sup,hex(m.base),hex(m.tip),5,2)));
+  GP.leaf=[keep(petalGeo(SHAPE.leaf,mix3(hex(P.leaf[0]),[0,0,0],.25),hex(P.leaf[1]),10,4)),
+           keep(petalGeo(SHAPE.leaf,hex(P.leaf[0]),hex(P.leaf[0]),10,4))];
+  const Rmax=h=>0.38+1.2*Math.max(0,1-h/2.8);
+  const mk=(h,r,a,thr,gt)=>{ const C=[Math.cos(a)*r,h,Math.sin(a)*r];
+    const e={A:[Math.cos(a)*.07,-.18,Math.sin(a)*.07],B:[C[0]*.22,h*.78,C[2]*.22],C,
+      face:norm3([Math.cos(a)*.8,.45,Math.sin(a)*.8]),droop:norm3([Math.cos(a)*.6,-1,Math.sin(a)*.6]),
+      ph:R()*6.283,thr,gt,g:thr<0.5?1:0,w:0,o:.4,on:thr<0.5};
+    return e; };
+
+  // 1. Fleurs principales
+  EL.main=[]; const nM=S.count;
+  for(let i=0;i<nM;i++){
+    const h=0.6+1.8*((i*0.618+R()*0.2)%1), a=i*2.39996+R()*0.6, r=Rmax(h)*(0.5+0.5*R());
+    const e=mk(h,r,a, i<2?-1:lerp(.06,.8,(i-2)/Math.max(1,nM-3)), 1.6+R()*1.4);
+    const vi=i%P.main.length, m=P.main[vi]; e.vi=vi; e.type=m.t; e.col=mix3(hex(m.base),hex(m.tip),.6);
+    e.size=m.t==='glo'?0.85+0.35*R():1.0+0.45*R();
+    e.stem=keep((()=>{ const b=new Builder(); b.grid(10,5,tubeFn(e,.016,stemD,stemC)); return b.done(); })());
+    e.petals=[];
+    if(m.t==='glo'){ const n=6, o=R()*6; for(let k=0;k<n;k++) e.petals.push({th:o+k*6.283/n,r0:.012,c:.10+R()*.06,op:2.0+R()*.5,s:.9+R()*.2,ph:R()*6}); }
+    else { [[4,.012,.04,.34,.62],[5,.03,.08,.82,.82],[6,.05,.14,1.3,1]].forEach(([n,r0,c,op,s],ri)=>{ const o=R()*6;
+      for(let k=0;k<n;k++) e.petals.push({th:o+k*6.283/n,r0,c,op:op+R()*.15,s,ph:R()*6}); }); }
+    EL.main.push(e);
+  }
+  // 2. Fleurs de support
+  EL.sup=[]; const nS=Math.round(nM*1.5);
+  for(let i=0;i<nS;i++){
+    const h=0.3+1.7*R(), a=R()*6.283, r=Rmax(h)*(0.35+0.6*R());
+    const e=mk(h,r,a, lerp(.16,.9,i/Math.max(1,nS-1)), 1.2+R());
+    const vi=i%P.sup.length; e.vi=vi; e.col=hex(P.sup[vi].tip); e.size=0.8+0.5*R();
+    e.stem=keep((()=>{ const b=new Builder(); b.grid(8,4,tubeFn(e,.009,stemD,stemC)); return b.done(); })());
+    e.petals=[]; const n=5+(i%2), o=R()*6; for(let k=0;k<n;k++) e.petals.push({th:o+k*6.283/n,r0:.01,c:.12,op:1.25+R()*.3,s:1,ph:R()*6});
+    EL.sup.push(e);
+  }
+  // 3. Feuillage de garniture : longues grappes légères, une seule géométrie par grappe
+  EL.spray=[]; const nP=Math.round(2+S.dens*11);
+  const twigC=hex(P.twig), dotC=hex(P.dot), lf0=hex(P.leaf[0]), lf1=hex(P.leaf[1]);
+  for(let i=0;i<nP;i++){
+    const h=0.9+1.9*R(), a=R()*6.283, r=Rmax(h)+0.3+0.5*R();
+    const e=mk(h,r,a, lerp(.22,.95,i/Math.max(1,nP-1)), 1.8+R()*1.5);
+    e.B=[e.C[0]*.3,h*.95,e.C[2]*.3];
+    const leafy=i%3===2; e.col=leafy?lf1:dotC;
+    const b=new Builder(); b.grid(12,4,tubeFn(e,.008,mix3(twigC,[0,0,0],.2),twigC));
+    const P0=[0,0,0],T0=[0,0,0],M=M4(), n=leafy?16:18;
+    for(let k=0;k<n;k++){
+      const t=0.28+0.72*(k+R()*.6)/n; bez(e,t,P0); bezT(e,t,T0);
+      const d=norm3([T0[0]*.5+(R()-.5)*1.6,T0[1]*.5+(R()-.2)*1.4,T0[2]*.5+(R()-.5)*1.6]);
+      const off=leafy?0:0.04+R()*0.09, id=R();
+      if(leafy){ M.fill(0); M[0]=M[5]=M[10]=M[15]=1; translate(M,P0[0],P0[1],P0[2]); basisDir(M,d); rotX(M,.5);
+        b.grid(4,2,petalFn(SHAPE.tiny,lf0,lf1),M,t,id); }
+      else { const cx=P0[0]+d[0]*off, cy=P0[1]+d[1]*off, cz=P0[2]+d[2]*off;
+        for(let q=0;q<4;q++){ M.fill(0); M[0]=M[5]=M[10]=M[15]=1; translate(M,cx,cy,cz); basisDir(M,d); rotY(M,q*1.571+id*3); rotX(M,1.15);
+          b.grid(2,2,petalFn(SHAPE.mini,mix3(dotC,[1,1,1],.35),dotC),M,t,id); } }
+    }
+    e.geo=keep(b.done()); EL.spray.push(e);
+  }
+  // 4. Feuillage d'habillage : collerette de grandes feuilles autour du col du vase
+  EL.leaf=[]; const nL=Math.round(5+S.dens*14);
+  for(let i=0;i<nL;i++){
+    const up=i%4===3;
+    EL.leaf.push({th:i*2.39996+R()*.4, op:up?0.35+R()*0.4:1.15+R()*0.95, s:up?1.2+R()*0.5:0.75+R()*0.55, gi:i%2,
+      ph:R()*6.283, thr:i<4?-1:lerp(.04,.7,(i-4)/Math.max(1,nL-5)), gt:1.2+R(), g:1, w:0, on:true});
+    const L=EL.leaf[i]; if(L.thr>=0.5){ L.g=0; L.on=false; }
+  }
+}
+
+/* ---------- Analyse du son ---------- */
+let AC=null, analyser=null, gainOut=null, source='none', micStream=null, micNode=null, elNode=null;
+const audio=new Audio(); audio.preload='auto';
+const freq=new Uint8Array(1024);
+const A={raw:[0,0,0,0],pk:[.25,.25,.25,.25],n:[0,0,0,0],fast:[0,0,0,0],slow:[0,0,0,0],e:0,vit:.55,beat:0,tBeat:-9,avgB:0};
+const RANGES=[[30,160],[160,900],[900,4000],[4000,12000]], WEIGHT=[1,1.15,1.5,2.2];
+function ensureAC(){
+  if(!AC){ const C=window.AudioContext||window.webkitAudioContext; AC=new C();
+    analyser=AC.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant=0.5;
+    gainOut=AC.createGain(); gainOut.gain.value=$('vol').value/100; gainOut.connect(AC.destination); }
+  if(AC.state==='suspended') AC.resume().catch(()=>{});
+}
+function listening(){ return source==='mic' || source==='demo' || (source==='file' && !audio.paused); }
+function analyse(dt,now){
+  if(source==='none'){ // aperçu : un souffle simulé pour que la page ne soit jamais vide
+    const b=Math.pow(Math.max(0,Math.sin(now*2.7)),8);
+    A.n[0]=.25+.55*b; A.n[1]=.45+.3*Math.sin(now*.5); A.n[2]=.4+.3*Math.sin(now*.37+2); A.n[3]=.35+.3*Math.sin(now*.61+4);
+    if(b>.95 && now-A.tBeat>.6){ A.tBeat=now; A.beat=.7; }
+    A.e=.42+.2*Math.sin(now*.13);
+  } else {
+    if(listening()) analyser.getByteFrequencyData(freq); else freq.fill(0);
+    const hz=AC.sampleRate/analyser.fftSize;
+    for(let b=0;b<4;b++){ const i0=Math.max(1,Math.floor(RANGES[b][0]/hz)), i1=Math.min(freq.length-1,Math.ceil(RANGES[b][1]/hz));
+      let s=0; for(let i=i0;i<=i1;i++) s+=freq[i];
+      A.raw[b]=Math.min(1.5,s/(i1-i0+1)/255*S.sens*WEIGHT[b]);
+      A.pk[b]=Math.max(A.pk[b]*Math.exp(-dt/25),A.raw[b],.14);
+      A.n[b]=A.raw[b]/A.pk[b]; }
+    A.avgB+=(A.raw[0]-A.avgB)*(1-Math.exp(-dt/.5));
+    if(A.n[0]>.5 && A.raw[0]>A.avgB*1.25 && now-A.tBeat>.22){ A.tBeat=now; A.beat=1; }
+    const m=(A.n[0]+A.n[1]+A.n[2]+A.n[3])/4;
+    A.e+=(m-A.e)*(1-Math.exp(-dt/(m>A.e?1.8:4)));
+  }
+  for(let b=0;b<4;b++){ const x=A.n[b];
+    A.fast[b]+=(x-A.fast[b])*(1-Math.exp(-dt*(x>A.fast[b]?30:5)));
+    A.slow[b]+=(x-A.slow[b])*(1-Math.exp(-dt/(x>A.slow[b]?1.2:3.5))); }
+  A.vit=source==='none'?A.e+.12:sstep(.10,.62,A.e);
+  A.beat*=Math.exp(-dt*6);
+}
+
+/* ---------- Démo : un petit morceau généré, qui monte puis retombe ---------- */
+const Demo={on:false,timer:0,next:0,step:0,bus:null,nb:null};
+const CH=[[57,60,64,67],[53,57,60,64],[48,52,55,59],[55,59,62,67]], LEAD=[76,79,81,84,81,79,76,72];
+const mtof=m=>440*Math.pow(2,(m-69)/12);
+function tone(type,f,t,dur,g,o={}){ const os=AC.createOscillator(), v=AC.createGain(); os.type=type; os.frequency.setValueAtTime(f,t);
+  if(o.to) os.frequency.exponentialRampToValueAtTime(o.to,t+(o.sw||dur));
+  v.gain.setValueAtTime(.0001,t); v.gain.linearRampToValueAtTime(g,t+(o.att||.006)); v.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  let n=os; if(o.lp){ const fl=AC.createBiquadFilter(); fl.type='lowpass'; fl.frequency.value=o.lp; os.connect(fl); n=fl; }
+  n.connect(v); v.connect(Demo.bus); os.start(t); os.stop(t+dur+.05); }
+function noise(t,dur,g,type,fq){ const s=AC.createBufferSource(); s.buffer=Demo.nb; const fl=AC.createBiquadFilter(); fl.type=type; fl.frequency.value=fq;
+  const v=AC.createGain(); v.gain.setValueAtTime(g,t); v.gain.exponentialRampToValueAtTime(.0001,t+dur);
+  s.connect(fl); fl.connect(v); v.connect(Demo.bus); s.start(t,Math.random()*.5); s.stop(t+dur+.02); }
+function demoStep(step,t,d){
+  const bar=Math.floor(step/16), sec=Math.floor(bar/4)%6, ch=CH[Math.floor(bar/2)%4], s=step%16;
+  if(s===0 && bar%2===0) ch.forEach((m,i)=>tone('triangle',mtof(m),t,d*32,.05,{att:.5,lp:1400}));
+  const arp=sec===1||sec===3||sec===4, sparse=sec===5||sec===2;
+  if((arp && s%2===0)||(sparse && s%4===0)) tone('triangle',mtof(ch[(s/2|0)%4]+12),t,.28,.07);
+  if(sec>=2 && sec<=4){
+    if(s%4===0) tone('sine',150,t,.28,.75,{to:45,sw:.11});
+    if(s===0||s===6||s===8||s===14){ const r=ch[0]>=53?ch[0]-24:ch[0]-12; tone('sawtooth',mtof(r),t,.3,.22,{lp:320}); }
+  }
+  if(sec===3||sec===4){
+    if(s%2===1) noise(t,.045,.13,'highpass',7500);
+    if(s===4||s===12) noise(t,.13,.2,'bandpass',1900);
+  }
+  if(sec===4 && (s===0||s===3||s===6||s===10||s===12)) tone('square',mtof(LEAD[(bar*5+s)%8]),t,.32,.05,{lp:2600});
+}
+function demoStart(){ ensureAC();
+  if(!Demo.nb){ Demo.nb=AC.createBuffer(1,AC.sampleRate,AC.sampleRate); const d=Demo.nb.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; }
+  Demo.bus=AC.createGain(); Demo.bus.gain.value=.8; Demo.bus.connect(analyser); Demo.bus.connect(gainOut);
+  Demo.step=0; Demo.next=AC.currentTime+.1; Demo.on=true;
+  Demo.timer=setInterval(()=>{ const d=60/104/4; while(Demo.next<AC.currentTime+.2){ demoStep(Demo.step,Demo.next,d); Demo.step++; Demo.next+=d; } },50); }
+function demoStop(){ if(!Demo.on) return; clearInterval(Demo.timer); Demo.on=false; const b=Demo.bus; Demo.bus=null;
+  try{ b.gain.setTargetAtTime(0,AC.currentTime,.04); }catch(e){} setTimeout(()=>{ try{ b.disconnect(); }catch(e){} },500); }
+
+/* ---------- Sources ---------- */
+const msg=(t,warn)=>{ $('msg').textContent=t; $('msg').classList.toggle('warn',!!warn); };
+function stopAll(){
+  demoStop(); audio.pause();
+  if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
+  if(micNode){ try{ micNode.disconnect(); }catch(e){} micNode=null; }
+  source='none'; A.pk.fill(.25);
+}
+function setSource(s,label){ source=s;
+  $('srcDemo').setAttribute('aria-pressed',s==='demo'); $('srcFile').setAttribute('aria-pressed',s==='file'); $('srcMic').setAttribute('aria-pressed',s==='mic');
+  $('player').hidden=s!=='file'; $('state').textContent=label||'Aperçu sans musique'; }
+$('srcDemo').onclick=()=>{ const was=source==='demo'; stopAll(); if(was){ setSource('none'); msg('Démo arrêtée.'); return; }
+  try{ demoStart(); setSource('demo','Démo'); msg('Le morceau commence calme, monte en intensité, puis retombe. Un cycle dure environ une minute.'); }
+  catch(e){ setSource('none'); msg('Le son n\'a pas pu démarrer sur ce navigateur.',true); } };
+$('srcFile').onclick=()=>$('file').click();
+$('file').onchange=ev=>{ const f=ev.target.files[0]; if(!f) return; stopAll(); ensureAC();
+  if(!elNode){ elNode=AC.createMediaElementSource(audio); elNode.connect(analyser); elNode.connect(gainOut); }
+  if(audio.src) URL.revokeObjectURL(audio.src);
+  audio.src=URL.createObjectURL(f); setSource('file',f.name.replace(/\.[^.]+$/,'')); msg('');
+  audio.play().catch(()=>msg('Appuie sur Lecture pour démarrer le morceau.')); };
+$('srcMic').onclick=async()=>{ const was=source==='mic'; stopAll(); if(was){ setSource('none'); msg('Micro coupé.'); return; }
+  try{ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) throw new Error('indisponible');
+    const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
+    ensureAC(); micStream=st; micNode=AC.createMediaStreamSource(st); micNode.connect(analyser);
+    setSource('mic','Micro'); msg('Le bouquet écoute ce qui se passe autour de toi. Rien n\'est enregistré.'); }
+  catch(e){ setSource('none'); msg('Le micro n\'est pas accessible dans cette page. Il fonctionnera une fois le projet hébergé sur ton propre site. En attendant, lance la démo ou choisis un fichier audio.',true); } };
+$('play').onclick=()=>{ ensureAC(); if(audio.paused) audio.play().catch(()=>{}); else audio.pause(); };
+audio.onplay=()=>$('play').textContent='Pause'; audio.onpause=()=>$('play').textContent='Lecture';
+const fmt=s=>{ s=Math.max(0,s|0); return (s/60|0)+':'+String(s%60).padStart(2,'0'); };
+audio.ontimeupdate=()=>{ if(!isFinite(audio.duration)) return; if(!seeking) $('seek').value=audio.currentTime/audio.duration*1000;
+  $('time').textContent=fmt(audio.currentTime)+' / '+fmt(audio.duration); };
+let seeking=false;
+$('seek').oninput=()=>{ seeking=true; }; $('seek').onchange=()=>{ if(isFinite(audio.duration)) audio.currentTime=$('seek').value/1000*audio.duration; seeking=false; };
+$('vol').oninput=e=>{ $('volO').textContent=e.target.value+' %'; if(gainOut) gainOut.gain.value=e.target.value/100; };
+
+/* ---------- Réglages de composition ---------- */
+function setAmb(a){ S.amb=a; root.dataset.amb=a; $('ambLight').setAttribute('aria-pressed',a==='light'); $('ambDark').setAttribute('aria-pressed',a==='dark'); }
+$('ambLight').onclick=()=>setAmb('light'); $('ambDark').onclick=()=>setAmb('dark');
+$('pals').onclick=e=>{ const b=e.target.closest('button'); if(!b) return; S.pal=b.dataset.pal;
+  [...$('pals').children].forEach(c=>c.setAttribute('aria-pressed',c===b)); compose(); };
+$('count').oninput=e=>{ S.count=+e.target.value; $('countO').textContent=S.count; compose(); };
+$('dens').oninput=e=>{ S.dens=e.target.value/100; $('densO').textContent=e.target.value+' %'; compose(); };
+$('sens').oninput=e=>{ S.sens=e.target.value/100; $('sensO').textContent=e.target.value+' %'; };
+$('shuffle').onclick=()=>{ S.seed=(S.seed*13+5)%9973; compose(); };
+
+/* ---------- Plein écran et rotation au doigt ---------- */
+const stage=$('stage');
+$('fs').onclick=()=>{
+  if(document.fullscreenElement){ document.exitFullscreen().catch(()=>{}); return; }
+  if(stage.classList.contains('pseudo')){ stage.classList.remove('pseudo'); return; }
+  const rq=stage.requestFullscreen||stage.webkitRequestFullscreen;
+  if(rq){ try{ const p=rq.call(stage); if(p&&p.catch) p.catch(()=>stage.classList.add('pseudo')); }catch(e){ stage.classList.add('pseudo'); } }
+  else stage.classList.add('pseudo');
+};
+let rot=0.4, drag=null, lastDrag=-9;
+cv.addEventListener('pointerdown',e=>{ drag={x:e.clientX}; cv.setPointerCapture(e.pointerId); });
+cv.addEventListener('pointermove',e=>{ if(!drag) return; rot+=(e.clientX-drag.x)*0.008; drag.x=e.clientX; lastDrag=performance.now()/1000; });
+['pointerup','pointercancel'].forEach(n=>cv.addEventListener(n,()=>{ drag=null; }));
+
+/* ---------- Rendu ---------- */
+const I4=M4(), Pm=M4(), Vm=M4(), PV=M4(), Root=M4(), Sm=M4(), F=M4(), Mp=M4();
+const WHITE=new Float32Array([1,1,1]), tint=new Float32Array(3), tint2=new Float32Array(3);
+const pos=[0,0,0], tan=[0,0,0], dir=[0,0,0];
+const halos=[];
+function draw(g,M,t,grow,glow,pulse,shake){
+  gl.uniformMatrix4fv(U.uM,false,M); gl.uniform3fv(U.uTint,t); gl.uniform1f(U.uGrow,grow); gl.uniform1f(U.uGlow,glow);
+  gl.uniform1f(U.uPulse,pulse); gl.uniform1f(U.uShake,shake);
+  gl.bindVertexArray(g.vao); gl.drawElements(gl.TRIANGLES,g.n,gl.UNSIGNED_SHORT,0);
+}
+function life(e,score,dt){
+  e.on = score > e.thr-(e.on?.07:0);
+  if(e.on){ if(e.g<=0) e.w=0; if(e.w>0) e.w=Math.max(0,e.w-dt/.9); else e.g=Math.min(1,e.g+dt/e.gt); }
+  else if(e.g>0){ if(e.w<1) e.w=Math.min(1,e.w+dt/1.8); else e.g=Math.max(0,e.g-dt/1.6); }
+}
+function setTint(o,w,dark,k){ if(dark){ const b=k*(1-.93*w); o[0]=o[1]=o[2]=b; } else { o[0]=lerp(1,.62,w*.85)*k; o[1]=lerp(1,.50,w*.85)*k; o[2]=lerp(1,.34,w*.85)*k; } return o; }
+const ease=g=>g*g*(3-2*g);
+
+function flower(e,geo,band,o0,dt,now,dark,p,centre){
+  const gg=ease(e.g); if(gg<=.002) return;
+  const bass=A.fast[0];
+  const sw=(Math.sin(now*.9+e.ph)*.018+Math.sin(now*.41+e.ph*2.3)*.02)*(1+bass*2.2)+A.beat*.025*Math.sin(e.ph*7);
+  Sm.set(Root); rotX(Sm,sw); rotZ(Sm,sw*.8*Math.cos(e.ph));
+  setTint(tint,e.w,dark,dark?.8:1);
+  draw(e.stem,Sm,tint,gg,dark?bass*.25:0,dark?p*1.5-.3:-9,0);
+  bez(e,gg,pos); bezT(e,gg,tan);
+  const w=e.w*.85;
+  dir[0]=lerp(tan[0]*.6+e.face[0],e.droop[0],w); dir[1]=lerp(tan[1]*.6+e.face[1],e.droop[1],w); dir[2]=lerp(tan[2]*.6+e.face[2],e.droop[2],w); norm3(dir);
+  F.set(Sm); translate(F,pos[0],pos[1],pos[2]); basisDir(F,dir);
+  const bloom=sstep(.3,1,gg);
+  scale(F,e.size*bloom*(1+.08*A.beat*(1-e.w)));
+  const target=(e.g>.8?o0+(1-o0)*band:0)*(1-e.w*.65);
+  e.o+=(target-e.o)*(1-Math.exp(-dt*6));
+  const glow=band*(1-e.w), pp=dark?p*1.5-1.3:-9, fl=.04*(.3+band);
+  setTint(tint,e.w,dark,dark?(e.petals.length>8?.4:.85):1);
+  for(const pt of e.petals){
+    Mp.set(F); rotY(Mp,pt.th); translate(Mp,0,0,pt.r0); rotX(Mp,lerp(pt.c,pt.op,e.o)+Math.sin(now*2.3+pt.ph)*fl);
+    if(pt.s!==1) scale(Mp,pt.s);
+    draw(geo,Mp,tint,2,glow,pp,0);
+  }
+  if(centre) draw(G.center,F,tint,2,glow,-9,0);
+  if(dark && bloom>.2) halos.push(F[12],F[13],F[14],e.size*bloom*(centre===2?.26:.5),e.col,(.08+.3*glow+.25*A.beat)*(1-e.w));
+}
+
+let last=0;
+function frame(ms){
+  requestAnimationFrame(frame);
+  const now=ms/1000, dt=Math.min(.05,Math.max(.001,now-last)); last=now;
+  analyse(dt,now);
+  const dpr=Math.min(window.devicePixelRatio||1,2), W=Math.round(cv.clientWidth*dpr), H=Math.round(cv.clientHeight*dpr);
+  if(W<2||H<2) return;
+  if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
+  if(!drag && !reduceMotion && now-lastDrag>2.5) rot+=dt*(.05+.1*A.vit);
+  const dark=S.amb==='dark', asp=W/H, fov=32*Math.PI/180, tn=Math.tan(fov/2);
+  const dist=Math.max(2.25/tn,1.95/(tn*asp))*1.02, eye=[0,1.05,dist];
+  persp(Pm,fov,asp,.5,80); lookAt(Vm,eye,[0,.74,0]); mul(PV,Pm,Vm);
+  const p=now-A.tBeat; // onde lumineuse depuis le dernier temps fort
+  const score=l=>A.vit*.75+A.slow[l]*.45;
+
+  gl.viewport(0,0,W,H); gl.depthMask(true); gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
+  gl.uniform1f(U.uMode,dark?1:0); gl.uniform1f(U.uTime,now); gl.uniform3fv(U.uEye,eye);
+  gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
+  gl.uniformMatrix4fv(U.uPV,false,I4); gl.uniform1f(U.uUnlit,1);
+  draw(dark?G.backD:G.backL,I4,WHITE,2,0,-9,0);
+  gl.uniformMatrix4fv(U.uPV,false,PV); gl.enable(gl.DEPTH_TEST); gl.uniform1f(U.uUnlit,0);
+  tint2[0]=tint2[1]=dark?.42:1; tint2[2]=dark?.55:1;
+  draw(G.plinth,I4,tint2,2,0,-9,0);
+  if(!dark){ gl.enable(gl.BLEND); gl.blendFunc(gl.DST_COLOR,gl.ZERO); gl.uniform1f(U.uUnlit,1); draw(G.shadow,I4,WHITE,2,0,-9,0); gl.uniform1f(U.uUnlit,0); gl.disable(gl.BLEND); }
+  Root.set(I4); rotY(Root,rot);
+  tint2[0]=tint2[1]=tint2[2]=dark?.85:1;
+  draw(VASE,Root,tint2,2,dark?A.fast[0]*.5:0,dark?p*3:-9,0);
+  if(dark){ gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE); gl.depthMask(false); }
+  halos.length=0;
+
+  // Habillage (basses)
+  const bass=A.fast[0], sL=score(0);
+  for(const L of EL.leaf){
+    life(L,sL,dt); const gg=ease(L.g); if(gg<=.002) continue;
+    Mp.set(Root); rotY(Mp,L.th); translate(Mp,0,-.06,.13);
+    rotX(Mp,L.op*(.55+.45*gg)+L.w*.5+Math.sin(now*1.1+L.ph)*.03*(1+bass*3)+A.beat*.07);
+    scale(Mp,L.s*gg);
+    setTint(tint,L.w,dark,dark?.55:1);
+    draw(GP.leaf[L.gi],Mp,tint,2,dark?bass*.6:0,dark?p*1.5-.2:-9,0);
+  }
+  // Garniture (aigus)
+  const tre=A.fast[3], sP=score(3);
+  for(const e of EL.spray){
+    life(e,sP,dt); const gg=ease(e.g); if(gg<=.002) continue;
+    const sw=(Math.sin(now*1.3+e.ph)*.03+Math.sin(now*.53+e.ph*2)*.025)*(1+bass*1.5);
+    Sm.set(Root); rotX(Sm,sw+e.w*.12); rotZ(Sm,sw*Math.cos(e.ph));
+    setTint(tint,e.w,dark,dark?.9:1);
+    draw(e.geo,Sm,tint,gg,dark?tre*.9*(1-e.w):tre*(1-e.w),dark?p*1.5-.3:-9,.004+tre*.02);
+  }
+  // Fleurs de support (hauts médiums) puis fleurs principales (médiums)
+  const sS=score(2); for(const e of EL.sup){ life(e,sS,dt); flower(e,GP.sup[e.vi],A.fast[2],.3,dt,now,dark,p,2); }
+  const sM=score(1); for(const e of EL.main){ life(e,sM,dt); flower(e,GP.main[e.vi],A.fast[1],.35,dt,now,dark,p,e.type==='glo'?1:0); }
+
+  if(dark){ gl.uniform1f(U.uUnlit,1);
+    for(let k=0;k<halos.length;k+=6){ const s=halos[k+3], c=halos[k+4], b=halos[k+5];
+      Mp.set(I4); translate(Mp,halos[k],halos[k+1],halos[k+2]); scale(Mp,s);
+      tint[0]=c[0]*b; tint[1]=c[1]*b; tint[2]=c[2]*b; draw(G.halo,Mp,tint,2,0,-9,0); }
+    Mp.set(I4); translate(Mp,0,-.45,0); scale(Mp,1.3); const b=.05+.14*bass+.1*A.beat; tint[0]=b*.7; tint[1]=b*.6; tint[2]=b;
+    draw(G.halo,Mp,tint,2,0,-9,0);
+    gl.uniform1f(U.uUnlit,0); gl.depthMask(true); gl.disable(gl.BLEND); }
+
+  $('mV').style.transform='scaleX('+clamp(A.vit,0,1).toFixed(3)+')';
+  for(let b=0;b<4;b++) $('m'+b).style.transform='scaleX('+clamp(A.fast[b],0,1).toFixed(3)+')';
+}
+
+setAmb(S.amb); compose(); requestAnimationFrame(frame);
+window.__bouquet={S,A,setAmb};
+})();
+</script>
+</body>
+</html>
