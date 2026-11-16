@@ -144,13 +144,25 @@ input[type=url]{font:inherit;font-size:14px;min-width:0;min-height:40px;padding:
     </div>
 
     <div class="group">
-      <h2>Ce qui pilote le bouquet</h2>
+      <h2>Comment le bouquet réagit</h2>
       <div class="meters">
-        <div class="meter"><span class="lab"><b>Taille de la composition</b><span>intensité et activité</span></span><div class="bar big"><i id="mV"></i></div></div>
-        <div class="meter"><span class="lab"><b>Fleurs principales</b><span>médiums</span></span><div class="bar"><i id="m1"></i></div></div>
-        <div class="meter"><span class="lab"><b>Fleurs de support</b><span>hauts médiums</span></span><div class="bar"><i id="m2"></i></div></div>
-        <div class="meter"><span class="lab"><b>Feuillage de garniture</b><span>aigus</span></span><div class="bar"><i id="m3"></i></div></div>
-        <div class="meter"><span class="lab"><b>Feuillage d'habillage</b><span>basses</span></span><div class="bar"><i id="m0"></i></div></div>
+        <div class="meter"><span class="lab"><b>Adaptation</b><span>taille de la composition</span></span><div class="bar big"><i id="mV"></i></div></div>
+        <div class="meter"><span class="lab"><b>Réflexes des fleurs</b><span>attaques médiums</span></span><div class="bar"><i id="m1"></i></div></div>
+        <div class="meter"><span class="lab"><b>Frémissement de la garniture</b><span>attaques aiguës</span></span><div class="bar"><i id="m2"></i></div></div>
+        <div class="meter"><span class="lab"><b>Sursaut du feuillage</b><span>attaques graves</span></span><div class="bar"><i id="m0"></i></div></div>
+        <div class="meter"><span class="lab"><b>Balancement synchronisé</b><span id="dS">pulsation peu fiable</span></span><div class="bar"><i id="mS"></i></div></div>
+      </div>
+      <div class="row">
+        <label for="sens">Sensibilité <output id="sensO">100 %</output></label>
+        <input type="range" id="sens" min="40" max="250" value="100">
+      </div>
+      <div class="row">
+        <label for="inert">Inertie <output id="inertO">100 %</output></label>
+        <input type="range" id="inert" min="40" max="250" value="100">
+      </div>
+      <div class="row">
+        <label for="sync">Synchronisation au rythme <output id="syncO">70 %</output></label>
+        <input type="range" id="sync" min="0" max="100" value="70">
       </div>
     </div>
 
@@ -179,10 +191,6 @@ input[type=url]{font:inherit;font-size:14px;min-width:0;min-height:40px;padding:
         <label for="dens">Densité du feuillage <output id="densO">55 %</output></label>
         <input type="range" id="dens" min="0" max="100" value="55">
       </div>
-      <div class="row">
-        <label for="sens">Sensibilité à la musique <output id="sensO">100 %</output></label>
-        <input type="range" id="sens" min="40" max="250" value="100">
-      </div>
       <button type="button" class="btn" id="shuffle">Nouvelle composition</button>
     </div>
   </section>
@@ -200,7 +208,7 @@ if (!gl) { $('nogl').hidden = false; return; }
 const root = document.documentElement;
 const prefersDark = root.dataset.theme === 'dark' ||
   (root.dataset.theme !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
-const S = {amb: prefersDark ? 'dark' : 'light', pal:'flamme', count:8, dens:0.55, sens:1, seed:7, eng:'new'};
+const S = {amb: prefersDark ? 'dark' : 'light', pal:'flamme', count:8, dens:0.55, sens:1, seed:7, eng:'new', inert:1, sync:.7};
 const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- Petite bibliothèque de matrices (colonnes d'abord) ---------- */
@@ -402,7 +410,7 @@ function compose(){
   const mk=(h,r,a,thr,gt)=>{ const C=[Math.cos(a)*r,h,Math.sin(a)*r];
     const e={A:[Math.cos(a)*.07,-.18,Math.sin(a)*.07],B:[C[0]*.22,h*.78,C[2]*.22],C,
       face:norm3([Math.cos(a)*.8,.45,Math.sin(a)*.8]),droop:norm3([Math.cos(a)*.6,-1,Math.sin(a)*.6]),
-      ph:R()*6.283,thr,gt,g:thr<0.5?1:0,w:0,o:.4,on:thr<0.5};
+      ph:R()*6.283,thr,gt,g:thr<0.5?1:0,w:0,o:.4,on:thr<0.5,kick:0,spin:R()*6,alt:R()<.5,tp:0};
     return e; };
 
   // 1. Fleurs principales
@@ -411,7 +419,7 @@ function compose(){
     const h=0.6+1.8*((i*0.618+R()*0.2)%1), a=i*2.39996+R()*0.6, r=Rmax(h)*(0.5+0.5*R());
     const e=mk(h,r,a, i<2?-1:lerp(.06,.8,(i-2)/Math.max(1,nM-3)), 1.6+R()*1.4);
     const vi=i%P.main.length, m=P.main[vi]; e.vi=vi; e.type=m.t; e.col=mix3(hex(m.base),hex(m.tip),.6);
-    e.size=m.t==='glo'?0.85+0.35*R():1.0+0.45*R();
+    e.size=m.t==='glo'?0.85+0.35*R():1.0+0.45*R(); e.tp=i%4;
     e.stem=keep((()=>{ const b=new Builder(); b.grid(10,5,tubeFn(e,.016,stemD,stemC)); return b.done(); })());
     e.petals=[];
     if(m.t==='glo'){ const n=6, o=R()*6; for(let k=0;k<n;k++) e.petals.push({th:o+k*6.283/n,r0:.012,c:.10+R()*.06,op:2.0+R()*.5,s:.9+R()*.2,ph:R()*6}); }
@@ -424,7 +432,7 @@ function compose(){
   for(let i=0;i<nS;i++){
     const h=0.3+1.7*R(), a=R()*6.283, r=Rmax(h)*(0.35+0.6*R());
     const e=mk(h,r,a, lerp(.16,.9,i/Math.max(1,nS-1)), 1.2+R());
-    const vi=i%P.sup.length; e.vi=vi; e.col=hex(P.sup[vi].tip); e.size=0.8+0.5*R();
+    const vi=i%P.sup.length; e.vi=vi; e.col=hex(P.sup[vi].tip); e.size=0.8+0.5*R(); e.tp=i%3===0?2:i%5===4?3:0;
     e.stem=keep((()=>{ const b=new Builder(); b.grid(8,4,tubeFn(e,.009,stemD,stemC)); return b.done(); })());
     e.petals=[]; const n=5+(i%2), o=R()*6; for(let k=0;k<n;k++) e.petals.push({th:o+k*6.283/n,r0:.01,c:.12,op:1.25+R()*.3,s:1,ph:R()*6});
     EL.sup.push(e);
@@ -456,7 +464,7 @@ function compose(){
   for(let i=0;i<nL;i++){
     const up=i%4===3;
     EL.leaf.push({th:i*2.39996+R()*.4, op:up?0.35+R()*0.4:1.15+R()*0.95, s:up?1.2+R()*0.5:0.75+R()*0.55, gi:i%2,
-      ph:R()*6.283, thr:i<4?-1:lerp(.04,.7,(i-4)/Math.max(1,nL-5)), gt:1.2+R(), g:1, w:0, on:true});
+      ph:R()*6.283, thr:i<4?-1:lerp(.04,.7,(i-4)/Math.max(1,nL-5)), gt:1.2+R(), g:1, w:0, on:true, kick:0});
     const L=EL.leaf[i]; if(L.thr>=0.5){ L.g=0; L.on=false; }
   }
 }
@@ -503,7 +511,7 @@ function makePercept(sr){
   const fb=[new Float32Array(MED),new Float32Array(MED),new Float32Array(MED)], env=new Float32Array(EN);
   let ai=0, t=0, bn=0, ei=0, tAC=0, skip=1, Lavg=-30, dev=2.5, cand=0;
   const f1=[0,0,0], f2=[0,0,0], th1=[0,0,0], lastOn=[-9,-9,-9], gAvg=[-100,-100,-100,-100];
-  const P={init:false,sens:1,x:new Float32Array(NB),loud:-100,Lm:-100,intensity:0,rate:0,activity:0,pulse:[0,0,0],marks:0,beat:0,
+  const P={init:false,sens:1,x:new Float32Array(NB),loud:-100,Lm:-100,intensity:0,rate:0,activity:0,pulse:[0,0,0],marks:0,beat:0,ev:0,evS:[0,0,0],
     n:[0,0,0,0],vit:0,tempo:0,conf:0,rel:0};
   function step(){
     for(let i=0;i<N;i++){ re[rev[i]]=buf[i]*win[i]; } im.fill(0);
@@ -524,7 +532,7 @@ function makePercept(sr){
     let cnt=0;
     for(let g=0;g<3;g++){ const f=fl[g]/fn[g]; P.pulse[g]*=Math.exp(-H*7);
       if(f1[g]>th1[g] && f1[g]>=f2[g] && f1[g]>f && t-lastOn[g]>.09){ const st=clamp((f1[g]-th1[g])/4,.2,1);
-        lastOn[g]=t; P.pulse[g]=Math.max(P.pulse[g],st); cnt++; P.marks|=1<<g; if(g===0) P.beat=Math.max(P.beat,st); }
+        lastOn[g]=t; P.pulse[g]=Math.max(P.pulse[g],st); cnt++; P.marks|=1<<g; P.ev|=1<<g; P.evS[g]=Math.max(P.evS[g],st); if(g===0) P.beat=Math.max(P.beat,st); }
       fb[g][bn]=f; SORT.set(fb[g]); SORT.sort();
       f2[g]=f1[g]; f1[g]=f; th1[g]=SORT[MED>>1]*K_MED+(g===0?K_ADD*1.4:K_ADD)/Math.sqrt(P.sens); }
     bn=(bn+1)%MED;
@@ -711,6 +719,8 @@ $('pals').onclick=e=>{ const b=e.target.closest('button'); if(!b) return; S.pal=
 $('count').oninput=e=>{ S.count=+e.target.value; $('countO').textContent=S.count; compose(); };
 $('dens').oninput=e=>{ S.dens=e.target.value/100; $('densO').textContent=e.target.value+' %'; compose(); };
 $('sens').oninput=e=>{ S.sens=e.target.value/100; $('sensO').textContent=e.target.value+' %'; };
+$('inert').oninput=e=>{ S.inert=e.target.value/100; $('inertO').textContent=e.target.value+' %'; };
+$('sync').oninput=e=>{ S.sync=e.target.value/100; $('syncO').textContent=e.target.value+' %'; };
 $('shuffle').onclick=()=>{ S.seed=(S.seed*13+5)%9973; compose(); };
 
 /* ---------- Plein écran et rotation au doigt ---------- */
@@ -745,46 +755,81 @@ function life(e,score,dt){
 function setTint(o,w,dark,k){ if(dark){ const b=k*(1-.93*w); o[0]=o[1]=o[2]=b; } else { o[0]=lerp(1,.62,w*.85)*k; o[1]=lerp(1,.50,w*.85)*k; o[2]=lerp(1,.34,w*.85)*k; } return o; }
 const ease=g=>g*g*(3-2*g);
 
-function flower(e,geo,band,o0,dt,now,dark,p,centre){
-  const gg=ease(e.g); if(gg<=.002) return;
-  const bass=A.fast[0];
-  const sw=(Math.sin(now*.9+e.ph)*.018+Math.sin(now*.41+e.ph*2.3)*.02)*(1+bass*2.2)+A.beat*.025*Math.sin(e.ph*7);
+/* ---------- Comportement végétal ----------
+   Le bouquet ne lit jamais le son brut : il reçoit un état perceptif X et le traduit en quatre familles de gestes.
+   Réflexe : sursaut sur une attaque. Adaptation : ouverture et taille suivent l'intensité. Synchronisation : balancement
+   sur la pulsation quand elle est fiable. Génération : mouvement lent et autonome. Chaque fleur a un tempérament. */
+const X={I:0,act:0,vit:.5,conf:0,tempo:0,pulse:[0,0,0],ev:0,evS:[0,0,0],phase:0,bp:0,sync:0,slow:.5};
+const TEMP=[{c:.85,g:1,r:9},   // réactive : attrape presque chaque attaque
+            {c:.08,g:.4,r:1.2},// lente : suit l'intensité de fond
+            {c:.3,g:.6,r:6},   // suiveuse : s'ouvre sur le temps
+            {c:.15,g:.5,r:2.5}];// autonome : vit sa vie
+let lastTB=-9;
+function behave(dt,now){
+  let tv;
+  if(source!=='none' && S.eng==='new'){ X.I=P.intensity; X.act=P.activity; X.conf=P.conf; X.tempo=P.tempo; tv=P.vit;
+    X.ev=P.ev; for(let g=0;g<3;g++){ X.pulse[g]=P.pulse[g]; X.evS[g]=P.evS[g]; P.evS[g]=0; } P.ev=0; }
+  else { const sim=source==='none'; X.I=clamp(A.vit,0,1); X.act=.4; X.conf=sim?.6:0; X.tempo=sim?51.6:0; tv=A.vit;
+    X.pulse[0]=A.beat; X.pulse[1]=A.fast[1]*.5; X.pulse[2]=A.fast[3]*.5; X.ev=A.tBeat!==lastTB?3:0; X.evS[0]=X.evS[1]=A.beat; X.evS[2]=0; }
+  lastTB=A.tBeat;
+  X.vit+=(tv-X.vit)*(1-Math.exp(-dt/((tv>X.vit?.5:2.2)*S.inert)));
+  X.slow+=(X.I-X.slow)*(1-Math.exp(-dt/(3.5*S.inert)));
+  X.sync=S.sync*sstep(.3,.7,X.conf);
+  if(X.tempo>0){ X.phase+=dt*X.tempo/60; if((X.ev&1) && X.conf>.3){ X.phase-=(X.phase-Math.round(X.phase))*.3; } }
+  X.bp=Math.exp(-(X.phase-Math.floor(X.phase))*5);
+}
+function flower(e,geo,layer,dt,now,dark,p,centre){
+  const gg=ease(e.g); e.kick*=Math.exp(-dt*5);
+  const T=TEMP[e.tp], grp=layer===1?1:2;
+  let hit=(X.ev>>grp&1)?X.evS[grp]:0; if(layer===1){ if(X.ev&1) hit=Math.max(hit,X.evS[0]*.7); if(X.ev&4) hit=Math.max(hit,X.evS[2]*.35); }
+  if(hit>0 && Math.random()<T.c) e.kick=Math.max(e.kick,hit*T.g);
+  if(gg<=.002) return;
+  const band=A.fast[layer], org=(Math.sin(now*.9+e.ph)*.018+Math.sin(now*.41+e.ph*2.3)*.02)*(1+X.act*1.6);
+  const syn=Math.sin(Math.PI*X.phase+(e.alt?Math.PI:0))*(.03+.035*X.I);
+  const sw=org*(1-.6*X.sync)+syn*X.sync+e.kick*.025*Math.sin(e.ph*7);
   Sm.set(Root); rotX(Sm,sw); rotZ(Sm,sw*.8*Math.cos(e.ph));
   setTint(tint,e.w,dark,dark?.8:1);
-  draw(e.stem,Sm,tint,gg,dark?bass*.25:0,dark?p*1.5-.3:-9,0);
+  draw(e.stem,Sm,tint,gg,dark?X.pulse[0]*.25:0,dark?p*1.5-.3:-9,0);
   bez(e,gg,pos); bezT(e,gg,tan);
-  const w=e.w*.85;
+  const w=clamp(e.w*.85+(1-X.slow)*.10,0,1);   // tension : la tête se redresse quand l'intensité monte
   dir[0]=lerp(tan[0]*.6+e.face[0],e.droop[0],w); dir[1]=lerp(tan[1]*.6+e.face[1],e.droop[1],w); dir[2]=lerp(tan[2]*.6+e.face[2],e.droop[2],w); norm3(dir);
   F.set(Sm); translate(F,pos[0],pos[1],pos[2]); basisDir(F,dir);
   const bloom=sstep(.3,1,gg);
-  scale(F,e.size*bloom*(1+.08*A.beat*(1-e.w)));
-  const target=(e.g>.8?o0+(1-o0)*band:0)*(1-e.w*.65);
-  e.o+=(target-e.o)*(1-Math.exp(-dt*6));
-  const glow=band*(1-e.w), pp=dark?p*1.5-1.3:-9, fl=.04*(.3+band);
+  scale(F,e.size*bloom*(1+.1*e.kick*(1-e.w)));
+  if(!reduceMotion) e.spin+=dt*(e.tp===3?.25:.08+.45*X.act)*(e.alt?-1:1);
+  rotY(F,e.spin);
+  let tg;
+  if(e.tp===0) tg=.22+.33*X.I+.5*e.kick;
+  else if(e.tp===1) tg=.12+.88*X.slow;
+  else if(e.tp===2) tg=lerp(.3+.3*X.I+.3*e.kick,.22+.25*X.I+.55*X.bp,X.sync);
+  else tg=.45+.28*Math.sin(now*.23+e.ph)+.2*X.I;
+  tg=clamp(tg+.15*(band-.4),0,1)*(e.g>.8?1:0)*(1-e.w*.65);
+  e.o+=(tg-e.o)*(1-Math.exp(-dt*T.r/S.inert));
+  const glow=clamp(.25*X.I+.9*e.kick+.3*band,0,1)*(1-e.w), pp=dark?p*1.5-1.3:-9, fl=.03*(1+X.act), fk=.2*e.kick;
   setTint(tint,e.w,dark,dark?(e.petals.length>8?.4:.85):1);
   for(const pt of e.petals){
-    Mp.set(F); rotY(Mp,pt.th); translate(Mp,0,0,pt.r0); rotX(Mp,lerp(pt.c,pt.op,e.o)+Math.sin(now*2.3+pt.ph)*fl);
+    Mp.set(F); rotY(Mp,pt.th); translate(Mp,0,0,pt.r0); rotX(Mp,lerp(pt.c,pt.op,e.o)+Math.sin(now*2.3+pt.ph)*fl+Math.sin(now*15+pt.ph)*fk);
     if(pt.s!==1) scale(Mp,pt.s);
     draw(geo,Mp,tint,2,glow,pp,0);
   }
   if(centre) draw(G.center,F,tint,2,glow,-9,0);
-  if(dark && bloom>.2) halos.push(F[12],F[13],F[14],e.size*bloom*(centre===2?.26:.5),e.col,(.08+.3*glow+.25*A.beat)*(1-e.w));
+  if(dark && bloom>.2) halos.push(F[12],F[13],F[14],e.size*bloom*(centre===2?.26:.5),e.col,(.08+.25*glow+.3*e.kick)*(1-e.w));
 }
 
 let last=0;
 function frame(ms){
   requestAnimationFrame(frame);
   const now=ms/1000, dt=Math.min(.05,Math.max(.001,now-last)); last=now;
-  analyse(dt,now);
+  analyse(dt,now); behave(dt,now);
   const dpr=Math.min(window.devicePixelRatio||1,2), W=Math.round(cv.clientWidth*dpr), H=Math.round(cv.clientHeight*dpr);
   if(W<2||H<2) return;
   if(cv.width!==W||cv.height!==H){ cv.width=W; cv.height=H; }
-  if(!drag && !reduceMotion && now-lastDrag>2.5) rot+=dt*(.05+.1*A.vit);
+  if(!drag && !reduceMotion && now-lastDrag>2.5) rot+=dt*(.05+.1*X.vit);
   const dark=S.amb==='dark', asp=W/H, fov=32*Math.PI/180, tn=Math.tan(fov/2);
   const dist=Math.max(2.25/tn,1.95/(tn*asp))*1.02, eye=[0,1.05,dist];
   persp(Pm,fov,asp,.5,80); lookAt(Vm,eye,[0,.74,0]); mul(PV,Pm,Vm);
   const p=now-A.tBeat; // onde lumineuse depuis le dernier temps fort
-  const score=l=>A.vit*.75+A.slow[l]*.45;
+  const score=l=>X.vit*.75+A.slow[l]*.45, dtL=dt/Math.sqrt(S.inert);
 
   gl.viewport(0,0,W,H); gl.depthMask(true); gl.clearColor(0,0,0,1); gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
   gl.uniform1f(U.uMode,dark?1:0); gl.uniform1f(U.uTime,now); gl.uniform3fv(U.uEye,eye);
@@ -801,44 +846,48 @@ function frame(ms){
   if(dark){ gl.enable(gl.BLEND); gl.blendFunc(gl.ONE,gl.ONE); gl.depthMask(false); }
   halos.length=0;
 
-  // Habillage (basses)
-  const bass=A.fast[0], sL=score(0);
+  // Habillage : sursaute sur les attaques graves, se balance sur la pulsation
+  const lowHit=(X.ev&1)?X.evS[0]:0, sL=score(0);
   for(const L of EL.leaf){
-    life(L,sL,dt); const gg=ease(L.g); if(gg<=.002) continue;
+    L.kick*=Math.exp(-dt*4.5); if(lowHit>0 && Math.random()<.6) L.kick=Math.max(L.kick,lowHit);
+    life(L,sL,dtL); const gg=ease(L.g); if(gg<=.002) continue;
     Mp.set(Root); rotY(Mp,L.th); translate(Mp,0,-.06,.13);
-    rotX(Mp,L.op*(.55+.45*gg)+L.w*.5+Math.sin(now*1.1+L.ph)*.03*(1+bass*3)+A.beat*.07);
+    rotX(Mp,L.op*(.55+.45*gg)+L.w*.5+Math.sin(now*1.1+L.ph)*.03*(1+X.act*2)*(1-.5*X.sync)
+      +Math.sin(Math.PI*X.phase+L.th)*.06*X.sync+L.kick*.11-(X.slow-.5)*.12);
     scale(Mp,L.s*gg);
     setTint(tint,L.w,dark,dark?.55:1);
-    draw(GP.leaf[L.gi],Mp,tint,2,dark?bass*.6:0,dark?p*1.5-.2:-9,0);
+    draw(GP.leaf[L.gi],Mp,tint,2,dark?L.kick*.7+X.I*.2:L.kick*.5,dark?p*1.5-.2:-9,0);
   }
-  // Garniture (aigus)
-  const tre=A.fast[3], sP=score(3);
+  // Garniture : frémit sur les attaques aiguës
+  const hi=X.pulse[2], sP=score(3);
   for(const e of EL.spray){
-    life(e,sP,dt); const gg=ease(e.g); if(gg<=.002) continue;
-    const sw=(Math.sin(now*1.3+e.ph)*.03+Math.sin(now*.53+e.ph*2)*.025)*(1+bass*1.5);
+    life(e,sP,dtL); const gg=ease(e.g); if(gg<=.002) continue;
+    const sw=(Math.sin(now*1.3+e.ph)*.03+Math.sin(now*.53+e.ph*2)*.025)*(1+X.act*1.2)*(1-.5*X.sync)+Math.sin(Math.PI*X.phase+e.ph)*.03*X.sync;
     Sm.set(Root); rotX(Sm,sw+e.w*.12); rotZ(Sm,sw*Math.cos(e.ph));
     setTint(tint,e.w,dark,dark?.9:1);
-    draw(e.geo,Sm,tint,gg,dark?tre*.9*(1-e.w):tre*(1-e.w),dark?p*1.5-.3:-9,.004+tre*.02);
+    draw(e.geo,Sm,tint,gg,(.15*X.I+.85*hi)*(1-e.w),dark?p*1.5-.3:-9,.003+hi*.022+X.act*.004);
   }
-  // Fleurs de support (hauts médiums) puis fleurs principales (médiums)
-  const sS=score(2); for(const e of EL.sup){ life(e,sS,dt); flower(e,GP.sup[e.vi],A.fast[2],.3,dt,now,dark,p,2); }
-  const sM=score(1); for(const e of EL.main){ life(e,sM,dt); flower(e,GP.main[e.vi],A.fast[1],.35,dt,now,dark,p,e.type==='glo'?1:0); }
+  // Fleurs de support puis fleurs principales, chacune selon son tempérament
+  const sS=score(2); for(const e of EL.sup){ life(e,sS,dtL); flower(e,GP.sup[e.vi],2,dt,now,dark,p,2); }
+  const sM=score(1); for(const e of EL.main){ life(e,sM,dtL); flower(e,GP.main[e.vi],1,dt,now,dark,p,e.type==='glo'?1:0); }
 
   if(dark){ gl.uniform1f(U.uUnlit,1);
     for(let k=0;k<halos.length;k+=6){ const s=halos[k+3], c=halos[k+4], b=halos[k+5];
       Mp.set(I4); translate(Mp,halos[k],halos[k+1],halos[k+2]); scale(Mp,s);
       tint[0]=c[0]*b; tint[1]=c[1]*b; tint[2]=c[2]*b; draw(G.halo,Mp,tint,2,0,-9,0); }
-    Mp.set(I4); translate(Mp,0,-.45,0); scale(Mp,1.3); const b=.05+.14*bass+.1*A.beat; tint[0]=b*.7; tint[1]=b*.6; tint[2]=b;
+    Mp.set(I4); translate(Mp,0,-.45,0); scale(Mp,1.3); const b=.05+.14*X.pulse[0]+.1*X.I; tint[0]=b*.7; tint[1]=b*.6; tint[2]=b;
     draw(G.halo,Mp,tint,2,0,-9,0);
     gl.uniform1f(U.uUnlit,0); gl.depthMask(true); gl.disable(gl.BLEND); }
 
   drawDiag(dt);
-  $('mV').style.transform='scaleX('+clamp(A.vit,0,1).toFixed(3)+')';
-  for(let b=0;b<4;b++) $('m'+b).style.transform='scaleX('+clamp(A.fast[b],0,1).toFixed(3)+')';
+  $('mV').style.transform='scaleX('+clamp(X.vit,0,1).toFixed(3)+')';
+  for(let b=0;b<3;b++) $('m'+b).style.transform='scaleX('+clamp(X.pulse[b],0,1).toFixed(3)+')';
+  $('mS').style.transform='scaleX('+X.sync.toFixed(3)+')';
+  if(((now*4)|0)!==(((now-dt)*4)|0)) $('dS').textContent=X.sync>.25?'sur la pulsation':S.sync<.05?'désactivé':'pulsation peu fiable';
 }
 
 setAmb(S.amb); compose(); requestAnimationFrame(frame);
-window.__bouquet={S,A,get P(){ return P; },setAmb,audio};
+window.__bouquet={S,A,X,EL,get P(){ return P; },setAmb,audio};
 })();
 </script>
 </body>

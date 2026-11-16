@@ -21,15 +21,16 @@ L'écoute se fait en trois temps, séparés dans le code :
    - *Intensité* : le niveau comparé à sa moyenne récente (contraste) et à une échelle absolue (force).
    - *Activité* : la densité d'attaques, détectées par flux spectral avec un seuil qui suit la médiane récente, dans les graves, les médiums et les aigus.
    - *Pulsation* : régularité des attaques sur 8 secondes, avec un tempo estimé et une confiance.
-3. **Comportement** : ces valeurs pilotent le bouquet.
+3. **Comportement** : le bouquet ne lit jamais le son brut, seulement cet état perceptif, qu'il traduit en quatre familles de gestes.
 
-| Ce qui pilote | Effet sur le bouquet |
-| --- | --- |
-| Intensité + activité | Taille de la composition (ce qui pousse ou fane) |
-| Médiums et leurs attaques | Ouverture des fleurs principales |
-| Hauts médiums | Fleurs de support |
-| Aigus | Frémissement du feuillage de garniture |
-| Basses et leurs attaques | Balancement du feuillage d'habillage, temps forts |
+| Geste | Ce qui le déclenche | Effet |
+| --- | --- | --- |
+| Réflexe | Une attaque (grave, médium ou aiguë) | Sursaut des feuilles, frémissement des pétales et de la garniture |
+| Adaptation | Intensité et activité sur plusieurs secondes | Taille de la composition, ouverture, port des têtes |
+| Synchronisation | Pulsation jugée fiable | Balancement des tiges sur le temps, en alternance |
+| Génération | Rien : mouvement propre | Respiration lente, rotation, vie autonome |
+
+Chaque fleur a un tempérament : réactive, lente, suiveuse de pulsation ou autonome. Trois réglages de comportement sont séparés des réglages d'apparence : sensibilité, inertie et synchronisation.
 
 Le panneau « Ce que le bouquet entend » affiche ces mesures en direct, avec un historique de 20 secondes. Le moteur d'origine reste disponible (« Ancien ») pour comparer.
 
