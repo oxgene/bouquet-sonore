@@ -12,15 +12,26 @@ Sources sonores :
 - **Fichier audio** : un morceau choisi sur l'appareil.
 - **Micro** : le bouquet écoute le son ambiant. Rien n'est enregistré. Le micro demande une page servie en HTTPS (GitHub Pages convient).
 
-## Correspondance musique ↔ bouquet
+## Comment le bouquet écoute
 
-| Couche du bouquet | Ce qu'elle écoute |
+L'écoute se fait en trois temps, séparés dans le code :
+
+1. **Mesure** : le son est découpé en 24 bandes réparties comme l'oreille, en décibels, à pas fixe (indépendant de la fluidité de l'affichage).
+2. **Perception** : trois dimensions en sont tirées.
+   - *Intensité* : le niveau comparé à sa moyenne récente (contraste) et à une échelle absolue (force).
+   - *Activité* : la densité d'attaques, détectées par flux spectral avec un seuil qui suit la médiane récente, dans les graves, les médiums et les aigus.
+   - *Pulsation* : régularité des attaques sur 8 secondes, avec un tempo estimé et une confiance.
+3. **Comportement** : ces valeurs pilotent le bouquet.
+
+| Ce qui pilote | Effet sur le bouquet |
 | --- | --- |
-| Fleurs principales | Médiums (mélodie, voix) |
-| Fleurs de support | Hauts médiums |
-| Feuillage de garniture | Aigus |
-| Feuillage d'habillage | Basses, pulsation |
-| Taille de la composition | Intensité globale du morceau |
+| Intensité + activité | Taille de la composition (ce qui pousse ou fane) |
+| Médiums et leurs attaques | Ouverture des fleurs principales |
+| Hauts médiums | Fleurs de support |
+| Aigus | Frémissement du feuillage de garniture |
+| Basses et leurs attaques | Balancement du feuillage d'habillage, temps forts |
+
+Le panneau « Ce que le bouquet entend » affiche ces mesures en direct, avec un historique de 20 secondes. Le moteur d'origine reste disponible (« Ancien ») pour comparer.
 
 ## Technique
 

@@ -74,6 +74,8 @@ input[type=url]{font:inherit;font-size:14px;min-width:0;min-height:40px;padding:
 .bar i{display:block;height:100%;width:100%;transform-origin:left;transform:scaleX(0);background:var(--accent);border-radius:99px}
 .bar.big{height:10px}
 .note{font-size:13px;color:var(--muted);margin:0}
+.diag{display:block;width:100%;border-radius:8px;background:color-mix(in srgb,var(--line) 45%,transparent)}
+#spec{height:56px}#hist{height:96px}
 </style>
 </head>
 <body>
@@ -124,12 +126,31 @@ input[type=url]{font:inherit;font-size:14px;min-width:0;min-height:40px;padding:
 
     <div class="group">
       <h2>Ce que le bouquet entend</h2>
+      <div class="row">
+        <span class="lab">Moteur d'écoute</span>
+        <div class="seg" role="group" aria-label="Moteur d'écoute" id="eng">
+          <button type="button" data-eng="new" aria-pressed="true">Perceptif</button>
+          <button type="button" data-eng="old" aria-pressed="false">Ancien</button>
+        </div>
+      </div>
       <div class="meters">
-        <div class="meter"><span class="lab"><b>Intensité du morceau</b><span>taille de la composition</span></span><div class="bar big"><i id="mV"></i></div></div>
-        <div class="meter"><span class="lab"><b>Fleurs principales</b><span>médiums, mélodie</span></span><div class="bar"><i id="m1"></i></div></div>
+        <div class="meter"><span class="lab"><b>Intensité</b><span id="dI">en attente</span></span><div class="bar big"><i id="pI"></i></div></div>
+        <div class="meter"><span class="lab"><b>Activité</b><span id="dA">en attente</span></span><div class="bar"><i id="pA"></i></div></div>
+        <div class="meter"><span class="lab"><b>Pulsation</b><span id="dP">en attente</span></span><div class="bar"><i id="pP"></i></div></div>
+      </div>
+      <canvas class="diag" id="spec" height="56" aria-label="Spectre en 24 bandes"></canvas>
+      <canvas class="diag" id="hist" height="96" aria-label="Historique des 20 dernières secondes"></canvas>
+      <p class="note">En haut, le spectre découpé comme l'oreille. En bas, les 20 dernières secondes : intensité (aplat), activité (trait) et attaques détectées dans les graves, médiums et aigus (points).</p>
+    </div>
+
+    <div class="group">
+      <h2>Ce qui pilote le bouquet</h2>
+      <div class="meters">
+        <div class="meter"><span class="lab"><b>Taille de la composition</b><span>intensité et activité</span></span><div class="bar big"><i id="mV"></i></div></div>
+        <div class="meter"><span class="lab"><b>Fleurs principales</b><span>médiums</span></span><div class="bar"><i id="m1"></i></div></div>
         <div class="meter"><span class="lab"><b>Fleurs de support</b><span>hauts médiums</span></span><div class="bar"><i id="m2"></i></div></div>
         <div class="meter"><span class="lab"><b>Feuillage de garniture</b><span>aigus</span></span><div class="bar"><i id="m3"></i></div></div>
-        <div class="meter"><span class="lab"><b>Feuillage d'habillage</b><span>basses, pulsation</span></span><div class="bar"><i id="m0"></i></div></div>
+        <div class="meter"><span class="lab"><b>Feuillage d'habillage</b><span>basses</span></span><div class="bar"><i id="m0"></i></div></div>
       </div>
     </div>
 
@@ -179,7 +200,7 @@ if (!gl) { $('nogl').hidden = false; return; }
 const root = document.documentElement;
 const prefersDark = root.dataset.theme === 'dark' ||
   (root.dataset.theme !== 'light' && window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches);
-const S = {amb: prefersDark ? 'dark' : 'light', pal:'flamme', count:8, dens:0.55, sens:1, seed:7};
+const S = {amb: prefersDark ? 'dark' : 'light', pal:'flamme', count:8, dens:0.55, sens:1, seed:7, eng:'new'};
 const reduceMotion = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* ---------- Petite bibliothèque de matrices (colonnes d'abord) ---------- */
@@ -441,7 +462,7 @@ function compose(){
 }
 
 /* ---------- Analyse du son ---------- */
-let AC=null, analyser=null, gainOut=null, source='none', micStream=null, micNode=null, elNode=null;
+let AC=null, analyser=null, analyser2=null, tap=null, gainOut=null, source='none', micStream=null, micNode=null, elNode=null;
 const audio=new Audio(); audio.preload='auto'; audio.crossOrigin='anonymous';
 let fromLink=false;
 const freq=new Uint8Array(1024);
@@ -450,12 +471,100 @@ const RANGES=[[30,160],[160,900],[900,4000],[4000,12000]], WEIGHT=[1,1.15,1.5,2.
 function ensureAC(){
   if(!AC){ const C=window.AudioContext||window.webkitAudioContext; AC=new C();
     analyser=AC.createAnalyser(); analyser.fftSize=2048; analyser.smoothingTimeConstant=0.5;
+    analyser2=AC.createAnalyser(); analyser2.fftSize=16384;
+    tap=AC.createGain(); tap.connect(analyser); tap.connect(analyser2);
     gainOut=AC.createGain(); gainOut.gain.value=$('vol').value/100; gainOut.connect(AC.destination); }
   if(AC.state!=='running') AC.resume().catch(()=>{});
 }
 // Sur iPhone, le sélecteur de fichiers ou l'arrêt du micro mettent le moteur audio en pause : on le relance au premier toucher.
 document.addEventListener('pointerdown',()=>{ if(AC && AC.state!=='running') AC.resume().catch(()=>{}); },true);
 function listening(){ return source==='mic' || source==='demo' || (source==='file' && !audio.paused); }
+
+/* ---------- Écoute perceptive ----------
+   Le son est analysé à pas fixe (512 échantillons), indépendamment de la fluidité de l'affichage.
+   Mesure : 24 bandes réparties comme l'oreille, en décibels, sans plafond.
+   Perception : intensité (relative à l'histoire récente), activité (attaques par flux spectral), pulsation (régularité + confiance). */
+const NB=24, FLOOR=-78;
+/*PERCEPT-BEGIN*/
+function makePercept(sr){
+  const N=2048,HOP=512,H=HOP/sr,NB=24,FMIN=40,FRATIO=350,FLOOR=-78,MED=128,EN=Math.round(8/H);
+  const clamp=(x,a,b)=>Math.min(b,Math.max(a,x)), sstep=(a,b,x)=>{ const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
+  const win=new Float32Array(N); let wsum=0; for(let i=0;i<N;i++){ win[i]=.5-.5*Math.cos(2*Math.PI*i/N); wsum+=win[i]; }
+  const re=new Float32Array(N), im=new Float32Array(N), rev=new Uint16Array(N), cs=new Float32Array(N/2), sn=new Float32Array(N/2);
+  for(let i=0,b=Math.log2(N);i<N;i++){ let r=0; for(let j=0;j<b;j++) if(i&(1<<j)) r|=1<<(b-1-j); rev[i]=r; }
+  for(let i=0;i<N/2;i++){ cs[i]=Math.cos(2*Math.PI*i/N); sn[i]=-Math.sin(2*Math.PI*i/N); }
+  const hz=sr/N, bi=[], AW=new Float32Array(NB), og=new Uint8Array(NB), lg=new Uint8Array(NB);
+  for(let k=0;k<NB;k++){ const f0=FMIN*Math.pow(FRATIO,k/NB), f1=FMIN*Math.pow(FRATIO,(k+1)/NB), fc=Math.sqrt(f0*f1);
+    const i0=Math.max(1,Math.round(f0/hz)), i1=Math.min(N/2-1,Math.max(i0,Math.round(f1/hz)-1)); bi.push([i0,i1,(f1-f0)/hz]);
+    const f2=fc*fc, a=12194*12194*f2*f2/((f2+20.6*20.6)*Math.sqrt((f2+107.7*107.7)*(f2+737.9*737.9))*(f2+12194*12194));
+    AW[k]=Math.pow(10,0.5*(20*Math.log10(a)+2)/10);   // pondération douce : l'oreille entend moins les extrêmes
+    og[k]=fc<200?0:fc<2500?1:2; lg[k]=fc<160?0:fc<900?1:fc<4000?2:3; }
+  const buf=new Float32Array(N), acc=new Float32Array(HOP), SORT=new Float32Array(MED), ACB=new Float32Array(EN), ACR=new Float32Array(160);
+  const fb=[new Float32Array(MED),new Float32Array(MED),new Float32Array(MED)], env=new Float32Array(EN);
+  let ai=0, t=0, bn=0, ei=0, tAC=0, skip=1, Lavg=-30, dev=2.5, cand=0;
+  const f1=[0,0,0], f2=[0,0,0], th1=[0,0,0], lastOn=[-9,-9,-9], gAvg=[-100,-100,-100,-100];
+  const P={init:false,sens:1,x:new Float32Array(NB),loud:-100,Lm:-100,intensity:0,rate:0,activity:0,pulse:[0,0,0],marks:0,beat:0,
+    n:[0,0,0,0],vit:0,tempo:0,conf:0,rel:0};
+  function step(){
+    for(let i=0;i<N;i++){ re[rev[i]]=buf[i]*win[i]; } im.fill(0);
+    for(let s=2;s<=N;s<<=1){ const h=s>>1, st=N/s; for(let i=0;i<N;i+=s) for(let j=0,k=0;j<h;j++,k+=st){ const a=i+j,b=a+h, tr=re[b]*cs[k]-im[b]*sn[k], ti=re[b]*sn[k]+im[b]*cs[k]; re[b]=re[a]-tr; im[b]=im[a]-ti; re[a]+=tr; im[a]+=ti; } }
+    const sc=4/(wsum*wsum); let lp=0; const gp=[0,0,0,0], fl=[0,0,0], fn=[0,0,0];
+    for(let k=0;k<NB;k++){ const b=bi[k]; let sum=0; for(let i=b[0];i<=b[1];i++) sum+=(re[i]*re[i]+im[i]*im[i])*sc;
+      const m=sum/(b[1]-b[0]+1), pw=m*b[2]; lp+=pw*AW[k]; gp[lg[k]]+=pw;
+      const x=Math.max(10*Math.log10(m+1e-14),FLOOR)-FLOOR, d=x-P.x[k]; if(d>0) fl[og[k]]+=d; fn[og[k]]++; P.x[k]=x; }
+    t+=H; const loud=10*Math.log10(lp+1e-14)+20*Math.log10(P.sens), heard=loud>-60; P.loud=loud;
+    if(skip){ skip--; fl[0]=fl[1]=fl[2]=0; }
+    if(!P.init){ if(!heard){ P.n.fill(0); return; } P.init=true; P.Lm=Lavg=loud; dev=2.5; }
+    // Intensité : niveau lissé, comparé à sa moyenne récente (contraste) et à une échelle absolue (force)
+    P.Lm+=(Math.max(loud,-90)-P.Lm)*(1-Math.exp(-H/(loud>P.Lm?.5:1.4)));
+    if(heard){ Lavg+=(P.Lm-Lavg)*(1-Math.exp(-H/12)); dev+=(Math.abs(P.Lm-Lavg)-dev)*(1-Math.exp(-H/20)); }
+    P.rel=clamp(.5+(P.Lm-Lavg)/(2*clamp(2.5*dev,3,9)),0,1);
+    P.intensity=(.7*P.rel+.3*sstep(-50,-8,P.Lm))*sstep(-64,-48,P.Lm);
+    // Activité : attaques = pics de hausse du spectre, au-dessus d'un seuil qui suit la médiane récente
+    let cnt=0;
+    for(let g=0;g<3;g++){ const f=fl[g]/fn[g]; P.pulse[g]*=Math.exp(-H*7);
+      if(f1[g]>th1[g] && f1[g]>=f2[g] && f1[g]>f && t-lastOn[g]>.09){ const st=clamp((f1[g]-th1[g])/4,.2,1);
+        lastOn[g]=t; P.pulse[g]=Math.max(P.pulse[g],st); cnt++; P.marks|=1<<g; if(g===0) P.beat=Math.max(P.beat,st); }
+      fb[g][bn]=f; SORT.set(fb[g]); SORT.sort();
+      f2[g]=f1[g]; f1[g]=f; th1[g]=SORT[MED>>1]*K_MED+(g===0?K_ADD*1.4:K_ADD)/Math.sqrt(P.sens); }
+    bn=(bn+1)%MED;
+    P.rate+=(cnt/H-P.rate)*(1-Math.exp(-H/2.5));
+    P.activity=Math.pow(clamp(P.rate/K_RATE,0,1),.85);
+    // Niveaux par famille, relatifs à leur propre moyenne récente, relevés par les attaques
+    for(let j=0;j<4;j++){ const gd=10*Math.log10(gp[j]+1e-14);
+      if(gd>-72){ if(gAvg[j]<-95) gAvg[j]=gd; gAvg[j]+=(gd-gAvg[j])*(1-Math.exp(-H/6)); }
+      const pu=j===0?P.pulse[0]:j===1?P.pulse[1]:j===2?Math.max(P.pulse[1],P.pulse[2])*.8:P.pulse[2];
+      P.n[j]=clamp((.36+(gd-gAvg[j])/14)*sstep(-80,-56,gd)+.62*pu,0,1); }
+    const v=clamp(.5*P.intensity+.5*P.activity,0,1);
+    P.vit+=(v-P.vit)*(1-Math.exp(-H/(v>P.vit?.8:2.2)));
+    // Pulsation : autocorrélation de l'enveloppe des attaques sur 8 secondes
+    env[ei]=fl[0]/fn[0]*1.5+fl[1]/fn[1]+fl[2]/fn[2]*.6; ei=(ei+1)%EN;
+    if(t-tAC>.5){ tAC=t; let mean=0; for(let i=0;i<EN;i++){ ACB[i]=env[(ei+i)%EN]; mean+=ACB[i]; } mean/=EN;
+      let r0=0; for(let i=0;i<EN;i++){ ACB[i]-=mean; r0+=ACB[i]*ACB[i]; }
+      let best=0, bl=0; const l0=Math.round(.27/H), l1=Math.min(159,Math.round(1.2/H));
+      if(r0>1e-6) for(let lag=l0;lag<=l1;lag++){ let r=0; for(let i=0;i<EN-lag;i++) r+=ACB[i]*ACB[i+lag];
+        r=r/(EN-lag)/(r0/EN); ACR[lag]=r; const bpm=60/(lag*H), w=Math.exp(-Math.pow(Math.log2(bpm/120),2)/1.4); if(r*w>best){ best=r*w; bl=lag; } }
+      const c=bl?sstep(.08,.4,ACR[bl])*sstep(.4,1.6,P.rate):0; P.conf+=(c-P.conf)*.3;
+      if(bl && c>.2){ const bpm=60/(bl*H);   // on ne change de tempo que si le nouveau candidat se confirme
+        if(!P.tempo||Math.abs(Math.log2(bpm/P.tempo))<.08){ P.tempo=P.tempo?P.tempo+(bpm-P.tempo)*.35:bpm; cand=0; }
+        else if(++cand>=4){ P.tempo=bpm; cand=0; } } }
+  }
+  P.push=function(samples){ for(let i=0;i<samples.length;i++){ acc[ai++]=samples[i]; if(ai===HOP){ ai=0; buf.copyWithin(0,HOP); buf.set(acc,N-HOP); step(); } } };
+  P.gap=function(){ skip=3; };
+  return P;
+}
+const K_MED=2.0, K_ADD=2.2, K_RATE=13;
+/*PERCEPT-END*/
+let P=makePercept(44100), lastPump=0;
+const TD=new Float32Array(16384), ZERO=new Float32Array(16384);
+function resetP(){ P=makePercept(AC?AC.sampleRate:44100); lastPump=0; }
+function pump(){
+  const t=AC.currentTime; if(!lastPump){ lastPump=t; return; }
+  let n=Math.round((t-lastPump)*AC.sampleRate); lastPump=t; if(n<=0) return;
+  if(n>TD.length){ P.gap(); n=TD.length; }
+  P.sens=S.sens;
+  if(listening()){ analyser2.getFloatTimeDomainData(TD); P.push(TD.subarray(TD.length-n)); } else P.push(ZERO.subarray(0,n));
+}
 function analyse(dt,now){
   if(source==='none'){ // aperçu : un souffle simulé pour que la page ne soit jamais vide
     const b=Math.pow(Math.max(0,Math.sin(now*2.7)),8);
@@ -471,14 +580,18 @@ function analyse(dt,now){
       A.pk[b]=Math.max(A.pk[b]*Math.exp(-dt/25),A.raw[b],.14);
       A.n[b]=A.raw[b]/A.pk[b]; }
     A.avgB+=(A.raw[0]-A.avgB)*(1-Math.exp(-dt/.5));
-    if(A.n[0]>.5 && A.raw[0]>A.avgB*1.25 && now-A.tBeat>.22){ A.tBeat=now; A.beat=1; }
+    if(S.eng==='old' && A.n[0]>.5 && A.raw[0]>A.avgB*1.25 && now-A.tBeat>.22){ A.tBeat=now; A.beat=1; }
     const m=(A.n[0]+A.n[1]+A.n[2]+A.n[3])/4;
     A.e+=(m-A.e)*(1-Math.exp(-dt/(m>A.e?1.8:4)));
+    pump();
+    if(S.eng==='new'){ for(let b=0;b<4;b++) A.n[b]=P.n[b];
+      if(P.beat>0 && now-A.tBeat>.12){ A.tBeat=now; A.beat=Math.max(A.beat,P.beat*(.6+.4*P.conf)); } }
+    P.beat=0;
   }
   for(let b=0;b<4;b++){ const x=A.n[b];
     A.fast[b]+=(x-A.fast[b])*(1-Math.exp(-dt*(x>A.fast[b]?30:5)));
     A.slow[b]+=(x-A.slow[b])*(1-Math.exp(-dt/(x>A.slow[b]?1.2:3.5))); }
-  A.vit=source==='none'?A.e+.12:sstep(.10,.62,A.e);
+  A.vit=source==='none'?A.e+.12:S.eng==='new'?P.vit:sstep(.10,.62,A.e);
   A.beat*=Math.exp(-dt*6);
 }
 
@@ -511,7 +624,7 @@ function demoStep(step,t,d){
 }
 function demoStart(){ ensureAC();
   if(!Demo.nb){ Demo.nb=AC.createBuffer(1,AC.sampleRate,AC.sampleRate); const d=Demo.nb.getChannelData(0); for(let i=0;i<d.length;i++) d[i]=Math.random()*2-1; }
-  Demo.bus=AC.createGain(); Demo.bus.gain.value=.8; Demo.bus.connect(analyser); Demo.bus.connect(gainOut);
+  Demo.bus=AC.createGain(); Demo.bus.gain.value=.8; Demo.bus.connect(tap); Demo.bus.connect(gainOut);
   Demo.step=0; Demo.next=AC.currentTime+.1; Demo.on=true;
   Demo.timer=setInterval(()=>{ const d=60/104/4; while(Demo.next<AC.currentTime+.2){ demoStep(Demo.step,Demo.next,d); Demo.step++; Demo.next+=d; } },50); }
 function demoStop(){ if(!Demo.on) return; clearInterval(Demo.timer); Demo.on=false; const b=Demo.bus; Demo.bus=null;
@@ -523,7 +636,7 @@ function stopAll(){
   demoStop(); audio.pause();
   if(micStream){ micStream.getTracks().forEach(t=>t.stop()); micStream=null; }
   if(micNode){ try{ micNode.disconnect(); }catch(e){} micNode=null; }
-  source='none'; A.pk.fill(.25);
+  source='none'; A.pk.fill(.25); resetP();
 }
 function setSource(s,label){ source=s;
   $('srcDemo').setAttribute('aria-pressed',s==='demo'); $('srcFile').setAttribute('aria-pressed',s==='file'); $('srcMic').setAttribute('aria-pressed',s==='mic');
@@ -533,7 +646,7 @@ $('srcDemo').onclick=()=>{ const was=source==='demo'; stopAll(); if(was){ setSou
   catch(e){ setSource('none'); msg('Le son n\'a pas pu démarrer sur ce navigateur.',true); } };
 $('srcFile').onclick=()=>{ try{ ensureAC(); }catch(e){} $('file').click(); };
 function playSrc(src,label,link){ stopAll(); ensureAC();
-  if(!elNode){ elNode=AC.createMediaElementSource(audio); elNode.connect(analyser); elNode.connect(gainOut); }
+  if(!elNode){ elNode=AC.createMediaElementSource(audio); elNode.connect(tap); elNode.connect(gainOut); }
   if(audio.src.startsWith('blob:')) URL.revokeObjectURL(audio.src);
   fromLink=link; audio.src=src; setSource('file',label); msg(link?'Chargement du lien…':'');
   $('seek').value=0; $('time').textContent=link?'':'0:00 / 0:00';
@@ -550,7 +663,7 @@ audio.onerror=()=>{ if(source!=='file') return; const link=fromLink; stopAll(); 
 $('srcMic').onclick=async()=>{ const was=source==='mic'; stopAll(); if(was){ setSource('none'); msg('Micro coupé.'); return; }
   try{ if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia) throw new Error('indisponible');
     const st=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:false,noiseSuppression:false,autoGainControl:false}});
-    ensureAC(); micStream=st; micNode=AC.createMediaStreamSource(st); micNode.connect(analyser);
+    ensureAC(); micStream=st; micNode=AC.createMediaStreamSource(st); micNode.connect(tap);
     setSource('mic','Micro'); msg('Le bouquet écoute ce qui se passe autour de toi. Rien n\'est enregistré.'); }
   catch(e){ setSource('none'); msg('Le micro n\'est pas accessible dans cette page. Il fonctionnera une fois le projet hébergé sur ton propre site. En attendant, lance la démo ou choisis un fichier audio.',true); } };
 $('play').onclick=()=>{ ensureAC(); if(audio.paused) audio.play().catch(()=>{}); else audio.pause(); };
@@ -563,8 +676,35 @@ let seeking=false;
 $('seek').oninput=()=>{ seeking=true; }; $('seek').onchange=()=>{ if(isFinite(audio.duration)) audio.currentTime=$('seek').value/1000*audio.duration; seeking=false; };
 $('vol').oninput=e=>{ $('volO').textContent=e.target.value+' %'; if(gainOut) gainOut.gain.value=e.target.value/100; };
 
+
+/* ---------- Panneau de diagnostic ---------- */
+const HN=240, hI=new Float32Array(HN), hA=new Float32Array(HN), hM=new Uint8Array(HN); let hi_=0, hT=0, COL=null;
+const fr=(x,d)=>x.toFixed(d).replace('.',',');
+function fit(c){ const d=Math.min(window.devicePixelRatio||1,2), w=Math.round(c.clientWidth*d), h=Math.round(c.clientHeight*d);
+  if(c.width!==w||c.height!==h){ c.width=w; c.height=h; } return c.getContext('2d'); }
+function drawDiag(dt){
+  const on=source!=='none';
+  if(!COL){ const cs=getComputedStyle(root); COL={a:cs.getPropertyValue('--accent').trim(),m:cs.getPropertyValue('--muted').trim(),i:cs.getPropertyValue('--ink').trim()}; }
+  hT+=dt; if(hT>=1/12){ hT=0; hI[hi_]=on?P.intensity:0; hA[hi_]=on?P.activity:0; hM[hi_]=on?P.marks:0; P.marks=0; hi_=(hi_+1)%HN;
+    $('dI').textContent=on&&P.init?fr(P.loud,0)+' dB':'en attente';
+    $('dA').textContent=on&&P.init?fr(P.rate,1)+' attaques/s':'en attente';
+    $('dP').textContent=!on||!P.init?'en attente':P.conf>.35&&P.tempo?'≈ '+Math.round(P.tempo)+' BPM':'incertaine'; }
+  $('pI').style.transform='scaleX('+(on?P.intensity:0).toFixed(3)+')';
+  $('pA').style.transform='scaleX('+(on?P.activity:0).toFixed(3)+')';
+  $('pP').style.transform='scaleX('+(on?P.conf:0).toFixed(3)+')';
+  let c=$('spec'), g=fit(c), W=c.width, H=c.height; g.clearRect(0,0,W,H);
+  const bw=W/NB; for(let k=0;k<NB;k++){ const v=on?P.x[k]/(-FLOOR):0; g.fillStyle=COL.a; g.globalAlpha=.35+.65*v; g.fillRect(k*bw+1,H-v*H,bw-2,v*H); } g.globalAlpha=1;
+  c=$('hist'); g=fit(c); W=c.width; H=c.height; g.clearRect(0,0,W,H);
+  const top=H*.72, sx=W/(HN-1);
+  g.beginPath(); g.moveTo(0,top); for(let i=0;i<HN;i++) g.lineTo(i*sx,top-hI[(hi_+i)%HN]*top*.95); g.lineTo(W,top); g.closePath(); g.fillStyle=COL.a; g.globalAlpha=.32; g.fill(); g.globalAlpha=1;
+  g.beginPath(); for(let i=0;i<HN;i++){ const y=top-hA[(hi_+i)%HN]*top*.95; i?g.lineTo(i*sx,y):g.moveTo(0,y); } g.strokeStyle=COL.i; g.lineWidth=Math.max(1,H/70); g.stroke();
+  g.fillStyle=COL.m; const rh=(H-top)/3;
+  for(let i=0;i<HN;i++){ const m=hM[(hi_+i)%HN]; if(!m) continue; for(let q=0;q<3;q++) if(m&(1<<q)) g.fillRect(i*sx-1,top+(2-q)*rh+rh*.25,Math.max(2,sx),rh*.5); }
+}
+$('eng').onclick=e=>{ const b=e.target.closest('button'); if(!b) return; S.eng=b.dataset.eng; [...$('eng').children].forEach(c=>c.setAttribute('aria-pressed',c===b)); };
+
 /* ---------- Réglages de composition ---------- */
-function setAmb(a){ S.amb=a; root.dataset.amb=a; $('ambLight').setAttribute('aria-pressed',a==='light'); $('ambDark').setAttribute('aria-pressed',a==='dark'); }
+function setAmb(a){ S.amb=a; root.dataset.amb=a; COL=null; $('ambLight').setAttribute('aria-pressed',a==='light'); $('ambDark').setAttribute('aria-pressed',a==='dark'); }
 $('ambLight').onclick=()=>setAmb('light'); $('ambDark').onclick=()=>setAmb('dark');
 $('pals').onclick=e=>{ const b=e.target.closest('button'); if(!b) return; S.pal=b.dataset.pal;
   [...$('pals').children].forEach(c=>c.setAttribute('aria-pressed',c===b)); compose(); };
@@ -692,12 +832,13 @@ function frame(ms){
     draw(G.halo,Mp,tint,2,0,-9,0);
     gl.uniform1f(U.uUnlit,0); gl.depthMask(true); gl.disable(gl.BLEND); }
 
+  drawDiag(dt);
   $('mV').style.transform='scaleX('+clamp(A.vit,0,1).toFixed(3)+')';
   for(let b=0;b<4;b++) $('m'+b).style.transform='scaleX('+clamp(A.fast[b],0,1).toFixed(3)+')';
 }
 
 setAmb(S.amb); compose(); requestAnimationFrame(frame);
-window.__bouquet={S,A,setAmb};
+window.__bouquet={S,A,get P(){ return P; },setAmb,audio};
 })();
 </script>
 </body>
